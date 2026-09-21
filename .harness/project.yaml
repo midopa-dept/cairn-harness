@@ -1,0 +1,15 @@
+kind: project
+schema_version: 1
+# 필수 초기 설정. 이름과 자료 루트는 이 프로젝트 안의 값으로 채운다.
+project_id: null
+artifact_roots: []
+task_root: .harness/tasks
+# baseline gate는 제거할 수 없으며 필요한 추가 tag만 둔다.
+extra_human_gate_tags: []
+# 예: 역할 ID 아래 base/allow/deny. allow는 base의 부분집합, deny는 누적된다.
+role_specializations: {}
+# 설정은 기능의 보증이 아니다. 실행 전 실제 관찰과 부족한 경계를 대조한다.
+runtime:
+  name: null
+  access_boundary: null
+  judgment_boundary: null

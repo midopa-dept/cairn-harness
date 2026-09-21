@@ -1,0 +1,9 @@
+# 복사본 비교용 식별자이며 외부 조회 지시가 아니다.
+version: 1.0.0-candidate.3
+distribution_id: universal-harness-v1
+content_id: sha256:9c78d2433c5ae5e927e83e5df68f5357083584763d97a33184a429aeafe356f2
+files:
+  .harness/core.yaml: 2964124aa4a474d5d3387ceeb06c0f1f9f615e95d4d4bc5fd46771a89bfdf81b
+  .harness/project.yaml: ee96586a86cab9830b378304e3fadfd6b8e872e6dddaf9edf50a4311ee5d3efb
+  .harness/task.example.yaml: 36aed44973a88f89e70b7fe3d6dec616194585eeaba2a8eb5e334e32ad58cc24
+  AGENTS.md: fa044db9a82ce6956dab179027886820c97350764595abd27ae854f126ab637e

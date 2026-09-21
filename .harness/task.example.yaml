@@ -1,0 +1,56 @@
+kind: task
+schema_version: 1
+id: task-example
+objective: 현재 사용자 요청의 목적을 입력한다.
+# 복사 후 distribution.yaml의 content_id를 채운다. 예시를 직접 실행하지 않는다.
+harness_snapshot: null
+workflow:
+  graph: standard-change
+  node: admit
+  role: coordinator
+  actor: {id: local-agent, kind: agent, context: work-context}
+  state: OPEN
+scope:
+  authorization: null
+  read: []
+  write: []
+  allow: [read, record, plan]
+  deny: []
+  risk_tags: []
+  risk_reason: null
+  children: []
+# 각 항목: id, requirement(의무 문장), check(관찰/검사 방법).
+criteria: []
+plan:
+  identity: null
+  summary: null
+  artifacts: []
+  # 필요 시 what / why / human_check / residual_risks를 채운다.
+  review_brief: null
+# 각 항목: id/path/revision/selector/kind; 선택 summary와 links.
+# edge는 relation/to/source_selector이며 원본의 명시 참조만 도출한다.
+artifacts: []
+# 후보 준비 후 id/artifacts/producers를 채운다. producers는 actor 형식이다.
+candidate: null
+verification:
+  verdict: not_run
+  independence_required: false
+  independence_reason: null
+  # id/artifact/subject/criteria/availability/verdict/applicability.
+  evidence: []
+# kind/actor/role/subject/verdict/basis/independence. 실제 판단만 추가한다.
+decisions: []
+delivery:
+  required: false
+  target: null
+  receipt: null
+  applicability: null
+  residual_risks: []
+recovery:
+  status: clear
+  # 작업량·위임에 맞는 유한 상한. 비어 있으면 실행 전 계획에서 정한다.
+  max_attempts: null
+  # id/action/state/receipt. 중단·불명확한 시도를 삭제하거나 초기화하지 않는다.
+  attempts: []
+  reason: null
+  resume_node: null
