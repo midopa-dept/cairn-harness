@@ -1,52 +1,63 @@
 # Cairn Harness
 
-Cairn is a small declarative harness for long-running agentic software projects. It defines lifecycle, authority, evidence, review, acceptance, recovery, and closeout contracts without requiring a dedicated runtime.
+Cairn은 장기적인 agentic software project를 위한 **소형 선언형 Harness**입니다. 별도의 전용 runtime 없이도 lifecycle, authority, evidence, review, acceptance, recovery, closeout 계약을 프로젝트에 적용할 수 있도록 설계되었습니다.
 
-> Current distribution: `1.0.0-candidate.3`
+> 현재 배포본: `1.0.0-candidate.3`
 
-## What is included
+## 포함 내용
 
-The distributable harness is intentionally small:
+배포본은 의도적으로 최소한의 파일만 포함합니다.
 
-- `AGENTS.md` — human-readable operating contract for agents working in the project
-- `.harness/core.yaml` — lifecycle, roles, authority, guards, subgraphs, schemas, and core policies
-- `.harness/project.yaml` — project-local configuration template
-- `.harness/task.example.yaml` — Task Packet template
-- `.harness/distribution.yaml` — immutable distribution identity and payload hashes
+- `AGENTS.md` — 프로젝트에서 agent가 따라야 할 사람이 읽을 수 있는 운영 계약
+- `.harness/core.yaml` — lifecycle, role, authority, guard, subgraph, schema, 핵심 정책
+- `.harness/project.yaml` — 프로젝트별 로컬 설정 템플릿
+- `.harness/task.example.yaml` — Task Packet 템플릿
+- `.harness/distribution.yaml` — 배포본 식별자와 payload 해시
 
-Cairn is declarative. It does **not** include an agent runtime, tool adapter, sandbox, or policy-enforcement daemon. Runtime capabilities and isolation boundaries must be verified in the environment where Cairn is used.
+Cairn은 **선언형 Harness**입니다. agent runtime, tool adapter, sandbox, policy enforcement daemon은 포함하지 않습니다. 따라서 실제 runtime 기능과 격리·권한 경계는 Cairn을 사용하는 환경에서 별도로 확인해야 합니다.
 
-## Install into a project
+## 프로젝트에 적용하기
 
-Copy `AGENTS.md` and the entire `.harness/` directory into the root of the target project. If the project already has agent instructions or harness files, review and merge conflicts instead of overwriting them blindly.
+대상 프로젝트의 루트에 `AGENTS.md`와 `.harness/` 디렉터리 전체를 복사합니다.
 
-Then give the agent the project goal and requirements and ask it to bootstrap and proceed according to Cairn. Project-specific values in `.harness/project.yaml` and the first Task Packet are filled during bootstrap.
+기존 프로젝트에 이미 agent 지침이나 Harness 파일이 있다면 그대로 덮어쓰지 말고 충돌 여부를 확인한 뒤 병합해야 합니다.
 
-## Core properties
+그 다음 agent에게 프로젝트의 목표와 요구사항을 제공하고 **Cairn에 따라 bootstrap하고 진행하라**고 요청하면 됩니다. `.harness/project.yaml`의 프로젝트별 값과 첫 Task Packet은 bootstrap 과정에서 채워집니다.
 
-Cairn is built around several contracts:
+## 핵심 계약
 
-- effective authority is narrowed by role, workflow node, and task scope;
-- high-impact changes such as architecture, authentication/security, database migration, and canonical requirement changes require a human gate;
-- verification, acceptance, and closeout are distinct states;
-- a producer cannot accept its own candidate;
-- context is retrieved progressively instead of loading project history by default;
-- evidence and decisions stay bound to the candidate and scope they actually support;
-- routine work proceeds automatically inside already-approved boundaries;
-- Git closeout, when authorized and applicable, verifies the actual delivered remote state.
+Cairn은 다음 원칙을 중심으로 동작합니다.
 
-The normative details live in `AGENTS.md` and `.harness/core.yaml`.
+- 실제 권한은 role × workflow node × task scope의 교집합으로 제한됩니다.
+- architecture, authentication/security, database migration, canonical requirement 변경 등 고영향 변경에는 Human Gate가 필요합니다.
+- verification, acceptance, closeout은 서로 다른 상태로 구분합니다.
+- candidate를 생성하거나 수정한 producer는 자기 candidate를 ACCEPT할 수 없습니다.
+- 프로젝트 전체 history를 항상 읽는 대신 필요한 context를 단계적으로 회수합니다.
+- evidence와 decision은 실제로 뒷받침하는 candidate와 scope에 결합됩니다.
+- 이미 승인된 경계 안의 routine work는 불필요한 추가 인간 승인 없이 진행합니다.
+- Git closeout이 위임되고 적용 가능한 경우 실제 remote 전달 상태까지 확인합니다.
 
-## Language
+구체적인 규범은 `AGENTS.md`와 `.harness/core.yaml`에 정의되어 있습니다.
 
-The current distribution uses Korean as the default language for human-readable plans, reports, review notes, and handoffs. Identifiers, paths, APIs, CLI syntax, proper names, source evidence, and tool output retain their original notation.
+## 기본 언어
 
-## Distribution identity
+현재 배포본은 사람이 읽는 설명, 계획, 보고, review note, handoff의 기본 언어로 **한국어**를 사용합니다.
 
-`.harness/distribution.yaml` identifies the exact distributable payload using a version, distribution ID, content ID, and per-file hashes. Project-local configuration and Task Packets are not part of that immutable payload identity.
+식별자, 경로, API/CLI 문법, 고유 명칭, 원근거, 자동 도구 출력은 원래 표기를 유지합니다.
 
-This repository currently publishes a **release candidate**, not a final `1.0.0` release.
+## 배포본 식별
 
-## License
+`.harness/distribution.yaml`은 다음 정보를 이용해 정확한 배포본을 식별합니다.
 
-Cairn is released under the MIT License. See `LICENSE`.
+- version
+- distribution ID
+- content ID
+- 각 배포 파일의 SHA-256 해시
+
+프로젝트별로 수정되는 `.harness/project.yaml` 값이나 실제 Task Packet은 이 immutable distribution identity에 포함되지 않습니다.
+
+현재 이 저장소는 최종 `1.0.0`이 아니라 **release candidate인 `1.0.0-candidate.3`**를 공개하고 있습니다.
+
+## 라이선스
+
+Cairn은 **MIT License**로 배포됩니다. 자세한 내용은 `LICENSE`를 확인하세요.
