@@ -49,4 +49,4 @@ This repository currently publishes a **release candidate**, not a final `1.0.0`
 
 ## License
 
-No open-source license has been selected yet. Public availability of this repository does not by itself grant reuse rights beyond those provided by applicable law and GitHub's terms. A license can be added once the distribution terms are chosen.
+Cairn is released under the MIT License. See `LICENSE`.
