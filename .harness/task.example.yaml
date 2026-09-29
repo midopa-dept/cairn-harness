@@ -1,5 +1,5 @@
 kind: task
-schema_version: 1
+schema_version: 2
 id: task-example
 objective: 현재 사용자 요청의 목적을 입력한다.
 # 복사 후 distribution.yaml의 content_id를 채운다. 예시를 직접 실행하지 않는다.
@@ -25,6 +25,11 @@ plan:
   identity: null
   summary: null
   artifacts: []
+  # scope.children이 있는 분해 작업이면 Coverage Matrix sidecar의 manifest ID를 적는다.
+  # sidecar는 kind coverage_matrix, task(이 Packet id), scope(artifact/revision/sections/basis),
+  # obligations(local_id, source{artifact, excerpt, fingerprint}, disposition, 처분별 field)를 가진다.
+  # 전체를 이 Packet에 복사하지 않는다. 의미는 core.yaml packet_semantics.coverage를 따른다.
+  coverage_matrix: null
   # 필요 시 what / why / human_check / residual_risks를 채운다.
   review_brief: null
 # 각 항목: id/path/revision/selector/kind; 선택 summary와 links.
@@ -39,12 +44,14 @@ verification:
   # id/artifact/subject/criteria/availability/verdict/applicability.
   evidence: []
 # kind/actor/role/subject/verdict/basis/independence. 실제 판단만 추가한다.
+# guard에 쓰지 않는 기록은 kind record와 subkind를 쓰고 verdict는 자유 텍스트다.
 decisions: []
 delivery:
   required: false
   target: null
   receipt: null
   applicability: null
+  # 각 항목: risk, owner, condition. 문자열은 종료 인계로 인정되지 않는다.
   residual_risks: []
 recovery:
   status: clear

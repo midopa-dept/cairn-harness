@@ -1,0 +1,3 @@
+# companion validator(tools/cairn_check.py) 전용 의존성. 배포 5파일과 대상 프로젝트 런타임에는 포함하지 않는다.
+# cairn_check는 YAML 1.2 실제 parser만 사용한다.
+ruamel.yaml>=0.18,<0.19

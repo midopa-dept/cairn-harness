@@ -14,8 +14,8 @@ LLM agent가 여러 단계에 걸쳐 코드를 수정하는 프로젝트에서�
 
 Cairn은 이런 문제를 **project-local contract**로 명시합니다. 전용 orchestration runtime을 제공하는 대신, 기존 agent/runtime 위에 얹을 수 있는 lifecycle·authority·evidence·context·approval·recovery 계약을 다섯 개의 배포 파일로 제공합니다.
 
-> 현재 공개 배포본: **`1.0.0-candidate.3`**
-> 현재 상태: 첫 실제 프로젝트 적용을 시작할 수 있는 release candidate이며, 최종 `1.0.0` release acceptance를 의미하지 않습니다.
+> 현재 공개 배포본: **`1.0.0-candidate.4`**
+> 현재 상태: 실제 프로젝트 적용을 이어갈 수 있는 release candidate이며, 최종 `1.0.0` release acceptance를 의미하지 않습니다.
 
 ---
 
@@ -105,6 +105,14 @@ Git 프로젝트에서 commit/push까지 위임된 경우에도 완료는 단순
 → 실제 delivery evidence 기록
 ```
 
+### candidate.4에서 새로 생긴 계약
+
+- **Coverage Matrix**: 분해 Task(`scope.children`이 있는 Packet)는 `plan.coverage_matrix`로 project-local sidecar 하나를 가리킵니다. 선언한 정본 scope의 모든 구조 단위를 `owned`·`deferred`·`excluded`·`informative` 중 하나로 처분합니다. 소유는 두 단계입니다. parent plan이 `owner_task`를 정하고(Stage A), child plan이 자기 criterion으로 `owner_criterion`을 채웁니다(Stage B). 각 행은 excerpt와 fingerprint로 정본에 결합되고, 정본이 바뀌면 drift(`suspect`·`ambiguous`·`missing`)로 드러납니다.
+- **proxy observation 금지**: touch 요구를 CSS 검사로, 지각 품질을 구조 검사로, 실제 기기를 desktop emulation으로 대신한 관찰을 PASS로 쓰지 않습니다.
+- **구조화된 residual**: 잔여 위험은 `{risk, owner, condition}` 구조로 소유자와 후속 조건을 남깁니다.
+- **`record` decision과 `local` 확장**: guard를 충족하지 않는 기록은 `kind: record`와 프로젝트가 정한 `subkind`로 남깁니다. `local`은 guard가 읽지 않는 프로젝트 확장 기록입니다.
+- **소급 금지**: 기존 Packet은 각자 `harness_snapshot`의 계약으로 해석하며, 새 계약을 소급 적용하지 않습니다.
+
 ---
 
 ## Cairn은 Graph Engineering인가?
@@ -156,6 +164,32 @@ AGENTS.md
 | `.harness/task.example.yaml` | Task Packet 템플릿 |
 | `.harness/distribution.yaml` | 배포 version, content ID, payload SHA-256 |
 
+### Companion validator(선택)
+
+`tools/`에는 Cairn contract의 결정적 무결성 규칙(VS0~VS6)을 검사하는 report-only 도구 `cairn_check` 0.2.1이 있습니다.
+
+- `tools/`는 5-file distribution이 아닙니다. 대상 프로젝트에 복사할 필요가 없습니다.
+- Python 3.9 이상과 YAML parser `ruamel.yaml`이 필요합니다.
+
+```sh
+python3 -m pip install -r tools/requirements-dev.txt
+python3 <cairn-harness 경로>/tools/cairn_check.py --project <대상 프로젝트> check
+```
+
+| 종료 코드 | 판정 |
+|---|---|
+| 0 | `PASS` |
+| 1 | `FAIL` |
+| 2 | 호출 오류 |
+| 3 | `INCONCLUSIVE`(결함은 없지만 미평가·재확인 대상이 있음) |
+
+- `PASS`는 결정적 무결성 검사 통과만 뜻합니다. 정확성도, 제품 인수(`ACCEPTED`)도 아닙니다. 도구는 authority가 아니며 Packet이나 matrix를 수정하지 않고 decision을 만들지 않습니다.
+- 도구가 없어도 `core.yaml` `validation_contract.companion`의 규칙과 순서를 사람이나 agent가 수동으로 수행할 수 있습니다(method `manual`).
+- 알려진 관찰: task_root에서 kind 오타나 빈 YAML은 warning `unrecognized_yaml`만 남기고 판정에 영향을 주지 않습니다. task_root 허용 kind는 다음 contract 개정에서 정합니다.
+- validator 판본은 contract `content_id`의 일부가 아닙니다.
+
+자세한 내용은 [`tools/README.md`](tools/README.md)를 확인하세요.
+
 Cairn은 **선언형 Harness**입니다. 다음은 포함하지 않습니다.
 
 - agent runtime
@@ -165,7 +199,7 @@ Cairn은 **선언형 Harness**입니다. 다음은 포함하지 않습니다.
 - vector database / embeddings
 - agent spawning service
 - CI/CD framework
-- 범용 semantic validator
+- 범용 semantic validator(결정적 무결성 검사 도구는 선택 companion으로 제공한다)
 - 자동 update service
 
 실제 runtime이 제공하지 않는 격리나 권한 강제를 Cairn이 제공한다고 가정해서는 안 됩니다.
@@ -174,9 +208,11 @@ Cairn은 **선언형 Harness**입니다. 다음은 포함하지 않습니다.
 
 ## 프로젝트에 적용하기
 
-대상 프로젝트 루트에 `AGENTS.md`와 `.harness/` 전체를 복사합니다.
+대상 프로젝트 루트에 `AGENTS.md`와 `.harness/` 전체를 복사합니다. `tools/`는 복사 대상이 아닙니다.
 
 기존 프로젝트에 이미 `AGENTS.md` 또는 다른 Harness 규칙이 있다면 그대로 덮어쓰지 말고 충돌을 검토해 병합합니다.
+
+`1.0.0-candidate.3`을 이미 적용한 프로젝트는 자동으로 바뀌지 않습니다. 별도 update Task에서 두 배포본의 diff와 프로젝트 적용성을 검토한 뒤 반영합니다. 기존 Packet은 계속 자기 `harness_snapshot`의 계약으로 해석합니다.
 
 그 다음 프로젝트 목표와 주요 요구사항을 제공하면 됩니다.
 
@@ -302,7 +338,7 @@ Cairn은 “완전히 새로운 agent architecture”를 주장하지 않습니�
 
 ## 현재 한계
 
-`1.0.0-candidate.3`에서 확인된 범위는 **선언형 계약과 배포 경계의 정적 일관성**입니다.
+`1.0.0-candidate.4`에서 확인된 범위는 **선언형 계약과 배포 경계의 정적 일관성**입니다.
 
 아직 다음을 실증적으로 주장하지 않습니다.
 
@@ -340,7 +376,9 @@ Cairn은 “완전히 새로운 agent architecture”를 주장하지 않습니�
 
 프로젝트에 복사한 뒤 수정되는 `.harness/project.yaml` 값이나 실제 Task Packet은 immutable distribution identity의 일부가 아닙니다.
 
-현재 공개본은 최종 `1.0.0`이 아니라 **`1.0.0-candidate.3`**입니다.
+현재 공개본은 최종 `1.0.0`이 아니라 **`1.0.0-candidate.4`**입니다.
+
+companion validator `cairn_check`의 판본은 이 content ID의 일부가 아닙니다. validator가 바뀌어도 contract content ID는 바뀌지 않습니다.
 
 ---
 
