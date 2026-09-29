@@ -50,6 +50,10 @@
 
 검증·인수·종료를 구분한다. 상위 작업은 하위 인수 결과를 자기 인수로 승계하지 않는다. 현재 후보와 근거의 대상이 다르면 변경 적용성을 설명하거나 필요한 범위를 다시 검증한다. candidate를 생성·수정한 actor는 역할/context를 바꾸어도 그 candidate를 ACCEPT할 수 없다. 다른 실제 acceptance actor가 필요하며 같은 모델 사용은 가능하다. 필수 독립 판단은 추가로 생성자의 판단 맥락과 분리한다. 비producer인 적격 reviewer는 acceptance까지 수행할 수 있으며 별도 acceptor를 더 만들지 않는다. 새 세션은 선택 가능한 수단이며 기본 의무가 아니다. continuation/compaction도 실제 분리가 확인된 경우에만 독립 판단 수단으로 인정한다.
 
+작업을 child Task로 분해하면 parent가 project-local Coverage Matrix 파일 하나를 소유하고 `plan.coverage_matrix`로 가리킨다. 분해 계획은 slice가 약속한 정본 normative section을 `basis`와 함께 선언한다. 그 section의 모든 구조 단위에 `owned`·`deferred`·`excluded`·`informative` 중 하나를 기록한다. `owned`는 이 단계에서 child Task(`owner_task`)까지만 정한다. 각 child는 자기 plan에서 자기 행을 criterion(`owner_criterion`)으로 refine하거나 사유와 함께 되돌린다. 문서를 읽었다는 기록이나 문서 전체 참조는 처분이 아니다. 행을 판단으로 지우거나 줄이지 않는다. 정본 의무를 제외하려면 승인된 결정이 필요하다. `informative`는 의무가 아닌 단위에만 쓰며, 잘못 쓰면 누락을 숨기므로 parent 인수자가 표본을 확인한다. child는 matrix 전체가 아니라 자기 행만 회수한다. parent 종료 전에는 미처분·미해결·drift 행이 없어야 한다. 규칙은 [로컬 계약](.harness/core.yaml)의 `packet_semantics.coverage`를 따른다.
+
+검증은 요구가 가리키는 실제 사용 조건을 관찰한다. computed style로 touch를, 접근성 검사로 시각 품질을, desktop emulation으로 실제 기기를, 내부 지표로 체감 latency를, fallback 실행으로 1차 경로를 대신하지 않는다.
+
 이미 위임된 일상 수정·집중 검증은 추가 인간 승인 없이 진행할 수 있다. 고영향 변경은 해당 계획에 결합된 인간 승인부터 확인한다. 과거의 유효한 승인을 같은 범위에서 재사용하되 새 변경에 자동 확대하지 않는다. 인간에게는 변경·이유·확인 사항·잔여 위험을 짧게 제공한다.
 
 ## 사용자 결정 질문
@@ -58,12 +62,14 @@
 
 ## 식별·보존·종료
 
-Packet은 하나의 작업 기록이다. 별도 계획/보고/검토 문서를 항상 만들 필요는 없다. 원결과와 이전 판정은 덮어쓰지 않고 배열에 후속 기록을 추가하거나 프로젝트 안의 회수 가능한 이전 판본으로 보존한다. 후보를 구성하는 내용과 변화하는 작업 기록은 별도 대상으로 식별해 자기참조 해시를 피한다.
+Packet은 하나의 작업 기록이다. 별도 계획/보고/검토 문서를 항상 만들 필요는 없다. guard에 쓰지 않는 기록(후보 freeze·전달 시도·요구 intake 등)은 decision `kind: record`와 `subkind`로 남기고, 프로젝트 확장 정보는 `local`에 둔다. 잔여 위험은 `risk`·`owner`·`condition`을 모두 적어 인계한다. 소유자 없는 문자열 잔여 위험으로는 종료하지 않는다. 원결과와 이전 판정은 덮어쓰지 않고 배열에 후속 기록을 추가하거나 프로젝트 안의 회수 가능한 이전 판본으로 보존한다. 후보를 구성하는 내용과 변화하는 작업 기록은 별도 대상으로 식별해 자기참조 해시를 피한다.
 
 경로는 프로젝트 루트 기준 상대 경로다. 내부 참조는 이 복사본에서 해결하고 프로젝트 자료는 설정된 자료 루트 안에서 찾는다. URL·절대 경로·상위 경로 탈출을 실행 계약의 참조로 사용하지 않는다. 필요한 외부 작업은 사용자 위임과 실제 도구 권한을 별도로 확인하되 외부 자료 회수는 이 번들의 시작 조건이 아니다.
 
 Git 프로젝트에서 현재 위임/프로젝트 정책이 commit/push를 허용하고 정상 remote가 있으며 task scope 안의 변경만 있으면 완료형 closeout을 기본 수행한다. 최종 diff·의도하지 않은 변경 → 검증/비producer 인수 확인 → 하나의 완료형 commit → 일반 non-force push → local/remote target identity 일치 → working tree clean → 실제 결과의 delivery evidence 기록 순서다. 기록 위치는 close 계획에서 정하며 사후 Packet 수정으로 dirty가 되면 clean으로 주장하지 않는다.
 
 Git 여부나 remote 존재는 권한이 아니다. force push, 예상 밖 원격 변경의 파괴적 reconciliation, scope 밖 변경 포함, 승인되지 않은 branch/history rewrite를 하지 않는다. Git이 아니거나 위임/권한/remote가 없으면 제품 실패로 꾸미지 않는다. 필요한 delivery가 미완료면 그 조건과 필요한 좁은 사용자 행동만 알린다. 자세한 조건은 `core.yaml.policies.git_closeout`을 따른다.
+
+Packet·matrix의 결정적 검사(구문 → schema → 연결 → matrix → drift → 소유권)는 선택 검사 도구가 있으면 도구로, 없으면 같은 순서로 직접 수행한다. 수행 방법과 검사하지 않은 범위를 근거에 남긴다. 앞 단계가 실패하면 coverage 완전성을 주장하지 않는다. 검사 통과는 선언된 계약의 무결성만 뜻하며 정확성이나 인수가 아니다. 모델 판단 신호도 권한이나 결정이 아니다.
 
 Harness 변경은 명시적인 업데이트 작업이다. 새 배포본과 현재 복사본의 diff·파일 해시·프로젝트 설정 호환성을 검토하고 승인된 범위만 교체한다. 진행 중 작업의 `harness_snapshot`을 몰래 바꾸지 않는다. 작업 종료 또는 명시적 전환 뒤 새 snapshot을 채택한다. 버전·내용 ID는 출하본 비교용이며 다른 저장소를 조회하라는 지시가 아니다. 프로젝트 설정과 병합된 지침은 별도 로컬 판본으로 계획의 manifest에 포함한다. 출하 manifest를 로컬 설정에 맞춰 다시 계산하지 않는다.
