@@ -12,10 +12,11 @@ LLM agent가 여러 단계에 걸쳐 코드를 수정하는 프로젝트에서�
 - 실패 후 재시작하면서 이전 상태·판정·근거가 유실됨
 - “테스트 통과”, “커밋 완료”, “실제 전달 완료”가 하나의 완료 의미로 뭉개짐
 
-Cairn은 이런 문제를 **project-local contract**로 명시합니다. 전용 orchestration runtime을 제공하는 대신, 기존 agent/runtime 위에 얹을 수 있는 lifecycle·authority·evidence·context·approval·recovery 계약을 다섯 개의 배포 파일로 제공합니다.
+Cairn은 이런 문제를 **project-local contract**로 명시합니다. 전용 orchestration runtime을 제공하는 대신, 기존 agent/runtime 위에 얹을 수 있는 lifecycle·authority·evidence·context·approval·recovery 계약을 여덟 개의 배포 파일로 제공합니다.
 
-> 현재 공개 배포본: **`1.0.0-candidate.4`**
+> 현재 공개 배포본: **`1.0.0-candidate.5`** (`contract_version` 3) + companion validator `cairn_check` 0.3.0
 > 현재 상태: 실제 프로젝트 적용을 이어갈 수 있는 release candidate이며, 최종 `1.0.0` release acceptance를 의미하지 않습니다.
+> 이 release는 attempt 실행 순서를 자동으로 검증하거나 강제하는 기능을 포함하지 않습니다([현재 한계](#현재-한계)).
 
 ---
 
@@ -113,6 +114,18 @@ Git 프로젝트에서 commit/push까지 위임된 경우에도 완료는 단순
 - **`record` decision과 `local` 확장**: guard를 충족하지 않는 기록은 `kind: record`와 프로젝트가 정한 `subkind`로 남깁니다. `local`은 guard가 읽지 않는 프로젝트 확장 기록입니다.
 - **소급 금지**: 기존 Packet은 각자 `harness_snapshot`의 계약으로 해석하며, 새 계약을 소급 적용하지 않습니다.
 
+### candidate.5에서 새로 생긴 계약
+
+- **Cross-runtime portability**: `AGENTS.md`가 모든 runtime의 공통 계약입니다. Claude Code는 `CLAUDE.md`(`@AGENTS.md`와 Claude Code adapter import 두 줄)로, Codex는 `AGENTS.md`를 native로 읽고 `.harness/adapters/codex.md`를 함께 씁니다. adapter는 수행 방법만 적고 gate·인수·권한·요구·다음 행동의 의미를 바꾸지 않습니다.
+- **Capability와 checkpoint**: Core는 도구 이름 대신 capability 10개로 말합니다. 관찰 상태는 `available`·`unavailable`·`gated`·`not_checked`이고, 없는 capability를 성공으로 가정하지 않습니다. 상태 authority는 repository bytes·Git·Packet·evidence·사용자 결정 기록뿐이며 runtime 메모리는 authority가 아닙니다. `recovery.checkpoint`로 인계 시점의 Git 상태를 대조합니다.
+- **독립 맥락의 정의**: 독립성은 성질로 판정합니다(producer와 다른 actor, 대화 미상속, bounded input). fork·resume은 독립이 아닙니다.
+- **Knowledge lifecycle**: artifact class 7개와 temperature(hot·warm·cold), `evidence_manifest`(authoritative·supporting·raw), CLOSED Task 기록의 봉인(sealed), relocation ledger(역사 Packet을 고치거나 옮기지 않고 옛 locator를 새 위치로 해석).
+- **Project health**: index 신선도·참조 해결·relocation·봉인 쓰기·residual liveness·raw evidence 위치 등을 error·warning·info·not_checked로 보고합니다. residual에 id·owner·due를 둘 수 있습니다.
+- **Escalation class**: derivable / ambiguous_semantic / high_impact를 구조 trigger로 나눕니다. confidence 점수는 쓰지 않습니다. 새 Human Gate tag `production_effect`.
+- **Attempt 경계**: 효과 없는 상태 확인(Packet·Git 읽기, next-action 파악, 결정적 계약 검사, capability 확인)은 attempt가 아닙니다. 파일 쓰기, test·검증 실행, 외부 효과 명령 전에는 `recovery.attempts`에 먼저 기록합니다. 이것은 계약상 의무이며, 이 release에는 그 순서를 자동으로 검사하는 도구가 없습니다.
+- **Delivery ledger**: close commit처럼 Packet에 미리 쓸 수 없는 전달 사실을 대화에만 두지 않습니다.
+- 기존 Packet은 각자 `harness_snapshot`의 계약으로 해석합니다. candidate.3/.4 Packet은 그대로 유효합니다.
+
 ---
 
 ## Cairn은 Graph Engineering인가?
@@ -149,26 +162,33 @@ Cairn은 두 종류의 graph 개념을 구분합니다.
 
 ```text
 AGENTS.md
+CLAUDE.md
 .harness/
 ├── core.yaml
 ├── project.yaml
 ├── task.example.yaml
-└── distribution.yaml
+├── distribution.yaml
+└── adapters/
+    ├── claude-code.md
+    └── codex.md
 ```
 
 | 파일 | 역할 |
 |---|---|
-| `AGENTS.md` | agent가 프로젝트에서 따라야 할 사람이 읽을 수 있는 운영 계약 |
+| `AGENTS.md` | 모든 runtime이 따르는 사람이 읽을 수 있는 운영 계약. Codex의 진입점 |
+| `CLAUDE.md` | Claude Code 진입점. `AGENTS.md`와 Claude Code adapter를 import |
 | `.harness/core.yaml` | lifecycle, role, authority, guard, graph, subgraph, schema, 핵심 정책 |
 | `.harness/project.yaml` | 프로젝트별 로컬 설정 |
 | `.harness/task.example.yaml` | Task Packet 템플릿 |
 | `.harness/distribution.yaml` | 배포 version, content ID, payload SHA-256 |
+| `.harness/adapters/claude-code.md` | Claude Code 수행 방법(entrypoint, capability 관찰, 독립 맥락, attempt 기록 순서) |
+| `.harness/adapters/codex.md` | Codex 수행 방법(같은 항목) |
 
 ### Companion validator(선택)
 
-`tools/`에는 Cairn contract의 결정적 무결성 규칙(VS0~VS6)을 검사하는 report-only 도구 `cairn_check` 0.2.1이 있습니다.
+`tools/`에는 Cairn contract의 결정적 무결성 규칙(VS0~VS6)과 candidate.5의 결정적 projection을 계산하는 report-only 도구 `cairn_check` 0.3.0이 있습니다.
 
-- `tools/`는 5-file distribution이 아닙니다. 대상 프로젝트에 복사할 필요가 없습니다.
+- `tools/`는 8-file distribution이 아닙니다. 대상 프로젝트에 복사할 필요가 없습니다.
 - Python 3.9 이상과 YAML parser `ruamel.yaml`이 필요합니다.
 
 ```sh
@@ -183,6 +203,19 @@ python3 <cairn-harness 경로>/tools/cairn_check.py --project <대상 프로젝�
 | 2 | 호출 오류 |
 | 3 | `INCONCLUSIVE`(결함은 없지만 미평가·재확인 대상이 있음) |
 
+0.3.0의 새 명령:
+
+| 명령 | 하는 일 |
+|---|---|
+| `next-action --packet PATH [--git]` | state·node·권한·Human Gate·candidate·인수 제외 actor·checkpoint 대조·다음 행동의 결정적 projection. runtime 사이 인계의 기준값 |
+| `health` | project health 보고 |
+| `relocations` | relocation ledger 검사와 옛 locator 해석 |
+| `evidence` | evidence tier 집계 |
+
+- **0.2.1은 candidate.5 Packet을 거부하지 않고 v3 규칙을 모른 채 PASS할 수 있습니다.** candidate.5 프로젝트에는 0.3.0 이상을 쓰세요.
+- 도구보다 새 `contract_version`을 만나면 `contract_newer_than_tool`로 `INCONCLUSIVE`를 냅니다.
+- attempt 기록은 항목 schema와 `max_attempts` 상한만 검사합니다. **attempt가 효과 있는 실행보다 먼저 기록됐는지는 검사하지 않습니다.**
+
 - `PASS`는 결정적 무결성 검사 통과만 뜻합니다. 정확성도, 제품 인수(`ACCEPTED`)도 아닙니다. 도구는 authority가 아니며 Packet이나 matrix를 수정하지 않고 decision을 만들지 않습니다.
 - 도구가 없어도 `core.yaml` `validation_contract.companion`의 규칙과 순서를 사람이나 agent가 수동으로 수행할 수 있습니다(method `manual`).
 - 알려진 관찰: task_root에서 kind 오타나 빈 YAML은 warning `unrecognized_yaml`만 남기고 판정에 영향을 주지 않습니다. task_root 허용 kind는 다음 contract 개정에서 정합니다.
@@ -193,7 +226,7 @@ python3 <cairn-harness 경로>/tools/cairn_check.py --project <대상 프로젝�
 Cairn은 **선언형 Harness**입니다. 다음은 포함하지 않습니다.
 
 - agent runtime
-- model/provider adapter
+- model/provider adapter(runtime adapter 두 파일은 수행 방법을 적은 문서이며 실행 코드가 아닙니다)
 - sandbox 또는 OS-level permission enforcement
 - graph database
 - vector database / embeddings
@@ -201,6 +234,7 @@ Cairn은 **선언형 Harness**입니다. 다음은 포함하지 않습니다.
 - CI/CD framework
 - 범용 semantic validator(결정적 무결성 검사 도구는 선택 companion으로 제공한다)
 - 자동 update service
+- attempt 사전 기록 순서의 자동 검증 또는 강제
 
 실제 runtime이 제공하지 않는 격리나 권한 강제를 Cairn이 제공한다고 가정해서는 안 됩니다.
 
@@ -208,11 +242,17 @@ Cairn은 **선언형 Harness**입니다. 다음은 포함하지 않습니다.
 
 ## 프로젝트에 적용하기
 
-대상 프로젝트 루트에 `AGENTS.md`와 `.harness/` 전체를 복사합니다. `tools/`는 복사 대상이 아닙니다.
+대상 프로젝트 루트에 `AGENTS.md`, `CLAUDE.md`와 `.harness/` 전체를 복사합니다. `tools/`는 복사 대상이 아닙니다.
 
-기존 프로젝트에 이미 `AGENTS.md` 또는 다른 Harness 규칙이 있다면 그대로 덮어쓰지 말고 충돌을 검토해 병합합니다.
+기존 프로젝트에 이미 `AGENTS.md`, `CLAUDE.md` 또는 다른 Harness 규칙이 있다면 그대로 덮어쓰지 말고 충돌을 검토해 병합합니다.
 
-`1.0.0-candidate.3`을 이미 적용한 프로젝트는 자동으로 바뀌지 않습니다. 별도 update Task에서 두 배포본의 diff와 프로젝트 적용성을 검토한 뒤 반영합니다. 기존 Packet은 계속 자기 `harness_snapshot`의 계약으로 해석합니다.
+`1.0.0-candidate.4` 이하를 이미 적용한 프로젝트는 자동으로 바뀌지 않습니다. 별도 update Task에서 다음을 검토한 뒤 반영합니다.
+
+- 두 배포본의 diff와 프로젝트 적용성. 배포 파일은 5개에서 8개로 늘었습니다.
+- 기존 Packet은 고치지 않습니다. 계속 자기 `harness_snapshot`의 계약으로 해석하며 새 field를 소급하지 않습니다.
+- 새 Task Packet부터 `schema_version` 3과 새 `harness_snapshot`을 씁니다.
+- `project.yaml`은 schema 1을 계속 쓸 수 있습니다. `layout`·`health`를 쓰려면 schema 2로 올립니다.
+- companion validator를 0.3.0으로 올립니다. candidate.4 Packet은 candidate.4 `core.yaml`을 `--contract <content_id>=<path>`로 주면 그 계약으로 검사합니다.
 
 그 다음 프로젝트 목표와 주요 요구사항을 제공하면 됩니다.
 
@@ -328,7 +368,7 @@ Cairn은 “완전히 새로운 agent architecture”를 주장하지 않습니�
 - 모든 candidate에 대한 비producer acceptance
 - Human Gate의 구체 위험 범주
 - 한 번에 하나의 사용자 결정 질문
-- 다섯 파일 distribution snapshot
+- 여덟 파일 distribution snapshot(공통 계약 하나와 얇은 runtime adapter)
 - 정본의 명시 참조에서만 도출하는 Artifact Graph 관계
 - 조건부 Git closeout
 
@@ -338,7 +378,20 @@ Cairn은 “완전히 새로운 agent architecture”를 주장하지 않습니�
 
 ## 현재 한계
 
-`1.0.0-candidate.4`에서 확인된 범위는 **선언형 계약과 배포 경계의 정적 일관성**입니다.
+`1.0.0-candidate.5`에서 확인된 범위는 다음과 같습니다.
+
+- 선언형 계약과 배포 경계의 정적 일관성, exact distribution identity
+- candidate.4 대비 authority·lifecycle·Human Gate 의미 불변(추가만)과 candidate.3/.4 Packet backward compatibility
+- companion validator의 결정적 검사
+- 소형 fixture에서 Claude Code와 Codex가 실제로 교대 실행한 conformance: Human Gate 판단, 양방향 인계, 비producer 인수, checkpoint가 두 runtime 사이에 같은 의미로 성립한 관측 실행
+
+다음은 **이 release가 보장하지 않습니다.**
+
+- **attempt 사전 기록 순서의 자동 검증·강제.** 효과 있는 실행 전에 attempt를 기록하는 것은 계약상 의무이지만, 이 release에는 그 순서를 검사하거나 강제하는 도구가 없습니다. 준수는 runtime·actor와 독립 검토자가 확인해야 합니다. 실제 conformance에서도 runtime의 사전 기록 준수는 실행마다 흔들렸습니다.
+- 임의의 shell 명령이 효과를 내는지에 대한 판별
+- conformance 통과의 매 실행 재현(시나리오별 반복 분산은 측정하지 않았고 browser가 있는 runtime 경로와 대화형 세션 기본값은 시험하지 않았습니다)
+
+또한 아직 다음을 실증적으로 주장하지 않습니다.
 
 아직 다음을 실증적으로 주장하지 않습니다.
 
@@ -376,7 +429,7 @@ Cairn은 “완전히 새로운 agent architecture”를 주장하지 않습니�
 
 프로젝트에 복사한 뒤 수정되는 `.harness/project.yaml` 값이나 실제 Task Packet은 immutable distribution identity의 일부가 아닙니다.
 
-현재 공개본은 최종 `1.0.0`이 아니라 **`1.0.0-candidate.4`**입니다.
+현재 공개본은 최종 `1.0.0`이 아니라 **`1.0.0-candidate.5`**입니다. content ID는 `sha256:7a3d4d4f69a346ef9fa4c44973276a7625e52b94e9e56dde742dba5e4b5e00ca`입니다.
 
 companion validator `cairn_check`의 판본은 이 content ID의 일부가 아닙니다. validator가 바뀌어도 contract content ID는 바뀌지 않습니다.
 

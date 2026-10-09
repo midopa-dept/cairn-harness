@@ -38,12 +38,32 @@ EXIT_CODES = {"PASS": 0, "FAIL": 1, "INCONCLUSIVE": 3}
 EXIT_USAGE = 2
 # 검사 대상 일부가 평가되지 않았음을 뜻하는 info finding
 UNEVALUATED_CODES = {"snapshot_unknown", "contract_hash_unchecked", "no_packets", "orphan_coverage_matrix",
-                     "scope_revision_differs"}
+                     "scope_revision_differs", "contract_newer_than_tool"}
 VERDICT_MEANING = {
     "PASS": "평가 대상 전부가 결정적 검사를 통과했다(PASS 의미 참조)",
     "FAIL": "결정적 계약 결함이 하나 이상 있다(미평가가 함께 있어도 FAIL)",
     "INCONCLUSIVE": "결함은 없지만 미평가·재확인 대상이 있어 통과를 주장하지 않는다",
 }
+
+
+def _artifact_identity_state(project, path: str, revision) -> str:
+    """'missing' | 'mismatch' | 'ok' | 'unverified'. git-blob·sha256 명시 identity만 대조한다."""
+    import hashlib
+    import re
+    data = project.source.read_bytes(path)
+    if data is None:
+        listed = project.source.list(path)
+        if not listed:
+            return "missing"
+        return "unverified"
+    if isinstance(revision, str):
+        found = re.fullmatch(r"git-blob:([0-9a-f]{40})", revision.strip())
+        if found:
+            return "ok" if hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest() == found.group(1) else "mismatch"
+        found = re.fullmatch(r"sha256:([0-9a-f]{64})", revision.strip())
+        if found:
+            return "ok" if hashlib.sha256(data).hexdigest() == found.group(1) else "mismatch"
+    return "unverified"
 
 
 @dataclass
@@ -217,6 +237,10 @@ class Run:
         elif core_bytes is not None:
             self.add("VS1", "info", "contract_hash_unchecked", ".harness/distribution.yaml",
                      "distribution.yaml에 core.yaml 파일 해시가 없어 대조하지 못했다")
+        if contract_version(core.data if isinstance(core.data, dict) else None) > TARGET_CONTRACT["contract_version"]:
+            self.add("VS1", "info", "contract_newer_than_tool", ".harness/core.yaml",
+                     f"contract_version {core.data.get('contract_version')}은 이 도구가 구현한 "
+                     f"{TARGET_CONTRACT['contract_version']}보다 새롭다. 새 규칙을 검사하지 못하므로 통과를 주장하지 않는다")
         for pid, packet in self.packets.items():
             data, path, contract = packet["data"], packet["path"], packet["contract"]
             if contract is None:
@@ -240,6 +264,8 @@ class Run:
                     self.inventory["record_subkinds"][sub] = self.inventory["record_subkinds"].get(sub, 0) + 1
             if "local" in data or ("local" in (data.get("plan") or {})):
                 self.add("VS1", "info", "local_extension", path, "local 확장 기록 사용(guard 비대상)", pid)
+            if contract_version(contract) >= 3:
+                self._v3_packet(pid, path, data)
         for pid, parent in self.parents.items():
             if parent.matrix is None:
                 continue
@@ -248,10 +274,65 @@ class Run:
                 continue
             for error in schema.validate_definition(parent.matrix_contract, "coverage_matrix", parent.matrix):
                 self.add("VS1", "defect", "matrix_schema", f"{parent.matrix_path}{error.path}", error.message, pid)
+        self._sidecars(core.data if isinstance(core.data, dict) else None)
         if self.inventory["record_subkinds"]:
             self.add("VS1", "info", "record_subkinds", "decisions",
                      f"record subkind 목록: {self.inventory['record_subkinds']}")
         self.status["VS1"] = "fail" if self.failed("VS1") else "pass"
+
+    def _sidecars(self, contract: dict | None) -> None:
+        """contract_version 3 프로젝트의 relocation ledger·verification registry schema(R5). 있으면 검사하고 없으면 생략한다."""
+        if contract_version(contract) < 3:
+            return
+        config = self.project.load(".harness/project.yaml").data
+        layout = (config.get("layout") or {}) if isinstance(config, dict) else {}
+        for key, default, name in (("relocation_ledger", ".harness/relocations.yaml", "relocation_ledger"),
+                                   ("verification_registry", None, "verification_registry")):
+            path = layout.get(key) or default
+            if not isinstance(path, str):
+                continue
+            doc = self.project.load(path)
+            if doc.text is None:
+                continue
+            if doc.error:
+                self.add("VS1", "defect", "sidecar_parse", path, doc.error)
+                continue
+            for error in schema.validate_definition(contract, name, doc.data):
+                self.add("VS1", "defect", f"{name}_schema", f"{path}{error.path}", error.message)
+
+    def _v3_packet(self, pid: str, path: str, data: dict) -> None:
+        """contract_version 3 Packet의 결정적 추가 규칙(evidence_manifest·residual id)."""
+        manifest = {a.get("id") for a in data.get("artifacts") or [] if isinstance(a, dict)}
+        em = data.get("evidence_manifest")
+        if isinstance(em, dict):
+            seen: dict[str, str] = {}
+            for tier in ("authoritative", "supporting"):
+                for ident in em.get(tier) or []:
+                    if ident not in manifest:
+                        self.add("VS1", "defect", "evidence_manifest_unresolved", f"{path}/evidence_manifest/{tier}",
+                                 f"{ident}가 artifacts manifest에 없다", pid)
+                    if ident in seen:
+                        self.add("VS1", "defect", "evidence_manifest_tier_overlap", f"{path}/evidence_manifest",
+                                 f"{ident}가 {seen[ident]}와 {tier} 두 tier에 있다", pid)
+                    seen[ident] = tier
+            root = str(em.get("root") or "").rstrip("/")
+            for raw in em.get("raw") or []:
+                if root and not (raw == root or str(raw).startswith(root + "/")):
+                    self.add("VS1", "warning", "evidence_raw_outside_root", f"{path}/evidence_manifest/raw",
+                             f"raw {raw}가 root {root} 밖이다", pid)
+        for index, d in enumerate((data.get("delivery") or {}).get("residual_dispositions") or []):
+            if isinstance(d, dict) and d.get("status") in ("transferred", "superseded") and not d.get("to"):
+                self.add("VS1", "defect", "residual_disposition_target_missing", f"{path}/delivery/residual_dispositions/{index}",
+                         f"{d.get('status')} 처분에는 이어받는 residual(to)이 필요하다", pid)
+        recovery = data.get("recovery") or {}
+        limit = recovery.get("max_attempts")
+        if isinstance(limit, int) and len(recovery.get("attempts") or []) > limit:
+            # 7차 검토 R7-02: max_attempts는 시도 총수의 유한 상한이다(packet_semantics.attempts)
+            self.add("VS1", "defect", "attempts_exceed_limit", f"{path}/recovery/attempts",
+                     f"attempt {len(recovery.get('attempts') or [])}개가 max_attempts {limit}을 넘는다", pid)
+        ids = [r.get("id") for r in (data.get("delivery") or {}).get("residual_risks") or [] if isinstance(r, dict) and r.get("id")]
+        for dup in sorted({i for i in ids if ids.count(i) > 1}):
+            self.add("VS1", "defect", "residual_id_duplicate", f"{path}/delivery/residual_risks", f"residual id {dup} 중복", pid)
 
     # ------------------------------------------------------------------ VS2
     def _task_artifact(self, parent: Parent, task_id: str) -> dict | None:
@@ -342,7 +423,42 @@ class Run:
                 if failed:
                     parent.pointer_failures += failed
                     parent.row_status[rid] = "unresolved"
+        self._v3_references()
         self.status["VS2"] = "fail" if self.failed("VS2") else "pass"
+
+    def _v3_references(self) -> None:
+        """contract_version 3 Packet의 manifest 참조(packet_semantics.references)가 해결되는가(3차 검토 R3-02).
+        plan.artifacts·candidate.artifacts·evidence.artifact가 artifacts manifest ID여야 한다."""
+        for pid, packet in self.packets.items():
+            if contract_version(packet["contract"]) < 3:
+                continue
+            data, path = packet["data"], packet["path"]
+            ids = {a.get("id") for a in data.get("artifacts") or [] if isinstance(a, dict)}
+            refs = [("plan/artifacts", r) for r in (data.get("plan") or {}).get("artifacts") or []]
+            candidate = data.get("candidate") if isinstance(data.get("candidate"), dict) else {}
+            refs += [("candidate/artifacts", r) for r in candidate.get("artifacts") or []]
+            refs += [("verification/evidence", (e or {}).get("artifact")) for e in (data.get("verification") or {}).get("evidence") or []
+                     if isinstance(e, dict)]
+            for where, ref in refs:
+                if ref not in ids:
+                    self.add("VS2", "defect", "manifest_reference_unresolved", f"{path}/{where}", f"{ref}가 artifacts manifest에 없다", pid)
+            if ((data.get("workflow") or {}).get("state")) == "CLOSED":
+                continue  # 종료 기록은 relocation될 수 있다. 회수 가능성은 health가 ledger와 함께 본다
+            manifest = {a.get("id"): a for a in data.get("artifacts") or [] if isinstance(a, dict)}
+            for index, ev in enumerate((data.get("verification") or {}).get("evidence") or []):
+                if not isinstance(ev, dict) or ev.get("availability") != "available":
+                    continue
+                entry = manifest.get(ev.get("artifact")) or {}
+                target = entry.get("path")
+                if not isinstance(target, str):
+                    continue
+                state = _artifact_identity_state(self.project, target, entry.get("revision"))
+                if state == "missing":
+                    self.add("VS2", "defect", "evidence_artifact_missing", f"{path}/verification/evidence/{index}",
+                             f"available 근거 {ev.get('artifact')}의 path {target}를 회수할 수 없다", pid)
+                elif state == "mismatch":
+                    self.add("VS2", "defect", "evidence_artifact_revision_mismatch", f"{path}/verification/evidence/{index}",
+                             f"available 근거 {ev.get('artifact')}의 명시 identity가 현재 bytes와 다르다", pid)
 
     # ------------------------------------------------------------------ VS3/VS4
     def _enumerate(self, parent: Parent) -> None:
@@ -574,7 +690,54 @@ class Run:
                     if not ok:
                         self.add("VS5", "defect", "residual_ownerless", f"{packet['path']}/{location}/{index}",
                                  "소유자·후속 조건 구조가 없는 잔여 위험", pid)
+                    elif contract_version(packet["contract"]) >= 3 and location.startswith("delivery") and (
+                            item.get("owner_ref") == pid or item.get("owner") == pid):
+                        self.add("VS5", "defect", "residual_owner_is_self", f"{packet['path']}/{location}/{index}",
+                                 "종료하는 Task 자신을 residual owner로 둘 수 없다", pid)
+        self._residual_graph()
         self.status["VS5"] = "fail" if self.failed("VS5") else "pass"
+
+    def _residual_graph(self) -> None:
+        """v3 Packet의 residual 처분·이어받기 연결이 존재하는 residual로 해결되고 순환하지 않는다(2차 검토 R2-03)."""
+        from .lifecycle import residual_closure
+        refs: set[str] = set()
+        for pid, packet in self.packets.items():
+            for index, r in enumerate((packet["data"].get("delivery") or {}).get("residual_risks") or []):
+                if isinstance(r, dict):
+                    refs.add(f"{pid}#{r.get('id') or index}")
+        successors: dict[str, set[str]] = {}
+        terminal: set[str] = set()
+        for pid, packet in self.packets.items():
+            if contract_version(packet["contract"]) < 3:
+                continue
+            delivery = packet["data"].get("delivery") or {}
+            for index, d in enumerate(delivery.get("residual_dispositions") or []):
+                if not isinstance(d, dict):
+                    continue
+                where = f"{packet['path']}/delivery/residual_dispositions/{index}"
+                ref, status, target = d.get("ref"), d.get("status"), d.get("to")
+                if ref not in refs:
+                    self.add("VS5", "defect", "residual_disposition_unresolved", where, f"ref {ref}가 검사 대상의 residual이 아니다", pid)
+                    continue
+                if status in ("transferred", "superseded"):
+                    if target not in refs or target == ref:
+                        self.add("VS5", "defect", "residual_disposition_unresolved", where, f"to {target}가 존재하는 다른 residual이 아니다", pid)
+                        continue
+                    successors.setdefault(ref, set()).add(target)
+                else:
+                    terminal.add(ref)
+            for index, r in enumerate(delivery.get("residual_risks") or []):
+                parent = r.get("inherited_from") if isinstance(r, dict) else None
+                if isinstance(parent, str):
+                    child = f"{pid}#{r.get('id') or index}"
+                    if parent not in refs or parent == child:
+                        self.add("VS5", "defect", "residual_inherited_unresolved", f"{packet['path']}/delivery/residual_risks/{index}",
+                                 f"inherited_from {parent}가 존재하는 다른 residual이 아니다", pid)
+                        continue
+                    successors.setdefault(parent, set()).add(child)
+        _, cyclic = residual_closure(refs, terminal, successors)
+        for ref in sorted(cyclic):
+            self.add("VS5", "defect", "residual_transfer_cycle", ref, "residual 이전·이어받기 연결이 순환한다", ref.split("#", 1)[0])
 
     # ------------------------------------------------------------------ VS6
     def vs6(self) -> None:

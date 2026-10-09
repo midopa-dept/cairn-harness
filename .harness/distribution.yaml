@@ -1,9 +1,12 @@
 # 복사본 비교용 식별자이며 외부 조회 지시가 아니다.
-version: 1.0.0-candidate.4
+version: 1.0.0-candidate.5
 distribution_id: universal-harness-v1
-content_id: sha256:6646a69ec53adf08f92fffc7e7a95c8567065b17b5ebf47187724b67e8fd5414
+content_id: sha256:7a3d4d4f69a346ef9fa4c44973276a7625e52b94e9e56dde742dba5e4b5e00ca
 files:
-  .harness/core.yaml: db6cbaa6584c63d7727876dfdc2eb68b8bb751a9727241fde8322f843a030830
-  .harness/project.yaml: ee96586a86cab9830b378304e3fadfd6b8e872e6dddaf9edf50a4311ee5d3efb
-  .harness/task.example.yaml: 78e8afb0e1aba9eea5d33d822b4c339bf4f28ac7758bce31056f83a071296fbd
-  AGENTS.md: f0b04886b24dbadffd9d1652170c0bf9b46d17cd028dfe1471e7e70bdf2e8831
+  .harness/adapters/claude-code.md: 6009dfeb33fe938069b26f0e7c096d592ad79215e26643bad5dc61b99fa94f3d
+  .harness/adapters/codex.md: cb861bd200c14d23d0a0e7195663d4bb4548824c52f9c61eb9ee3ef220678f04
+  .harness/core.yaml: 8f25e00b0801c0e504db756b040902d41ba87ab5140a8a041b3a0599c0e1bf47
+  .harness/project.yaml: f0ffd31e904974bd01331600949a49d56ef8d2d0a300c90523880e25a038cc74
+  .harness/task.example.yaml: f74cfde8ff9a986ba05b0aaa00fea58b7883b1c01c29567c9ba327f7425afef7
+  AGENTS.md: d62278dc6101573a2cacd3b4d6385fd4ec495912cf1f09b963cd0892116fb573
+  CLAUDE.md: e36faf3f8c1abe19feafffb1ce4d165540ab1297a670e097ee5d88a523c063f5

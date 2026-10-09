@@ -1,10 +1,10 @@
 # cairn_check — Cairn companion validator
 
-`cairn_check`는 Cairn contract의 결정적 무결성 규칙(VS0~VS6)을 검사하는 **report-only companion 도구**입니다.
+`cairn_check`는 Cairn contract의 결정적 무결성 규칙(VS0~VS6)과 candidate.5의 결정적 projection(next action·project health·relocation·evidence tier)을 계산하는 **report-only companion 도구**입니다.
 
 ## 지위
 
-- Cairn contract snapshot은 배포 5파일입니다: `AGENTS.md`, `.harness/core.yaml`, `.harness/project.yaml`, `.harness/task.example.yaml`, `.harness/distribution.yaml`. 이 도구는 그 5파일에 포함되지 않습니다. 따라서 도구의 판본과 contract `content_id`는 별개의 식별자입니다.
+- Cairn contract snapshot은 배포 파일입니다(candidate.5: `AGENTS.md`, `CLAUDE.md`, `.harness/core.yaml`, `.harness/project.yaml`, `.harness/task.example.yaml`, `.harness/distribution.yaml`, `.harness/adapters/claude-code.md`, `.harness/adapters/codex.md`). 이 도구는 배포 파일에 포함되지 않습니다. 따라서 도구의 판본과 contract `content_id`는 별개의 식별자입니다.
 - 도구는 authority가 아닙니다. Packet·Coverage Matrix·정본 문서를 수정하지 않습니다. lifecycle 전이, decision, 인수를 만들지 않습니다.
 - `PASS`는 선언된 contract의 결정적 무결성 검사를 통과했다는 뜻뿐입니다. 정확성도, 제품 인수(`ACCEPTED`)도, coverage의 의미적 충분성도 뜻하지 않습니다.
 - 도구가 없어도 됩니다. `core.yaml` `validation_contract.companion`의 규칙과 순서를 사람이나 agent가 수동으로 수행할 수 있습니다. 그때는 method `manual`과 수행 범위를 기록합니다. 수동 열거는 결정적 열거를 주장하지 않습니다.
@@ -25,13 +25,19 @@ python3 tools/cairn_check.py --project . check
 | `skeleton --parent PATH --scope PATH` | scope 선언에서 disposition null 행으로 된 matrix 초안을 출력합니다. 처분은 채우지 않습니다 |
 | `rows --matrix PATH --task ID` | child가 회수할 자기 행(`owner_task` 또는 `to`가 자기인 행)을 출력합니다 |
 | `seed --parent PATH --matrix PATH --criterion TASK#CRITERION` | criterion이 소유한 행의 정본 전문을 현재 판본에서 조립합니다(저장하지 않음) |
+| `next-action --packet PATH [--git]` | `packet_semantics.next_action`의 결정적 projection(state·node·권한·Gate·candidate·인수 제외 actor·checkpoint 대조·next action·requires_judgment). Claude·Codex parity의 기준값 |
+| `health [--json] [--since REV] [--strict] [--residuals] [--today YYYY-MM-DD]` | project health: index·참조·relocation·봉인 쓰기/수정·residual liveness·raw evidence·동시 쓰기·검증 surface·adapter drift |
+| `relocations [--resolve OLD_PATH ...]` | relocation ledger 검사(cycle·identity·target)와 옛 locator 해석 |
+| `evidence [--task ID]` | Task별 evidence tier(authoritative·supporting·raw) bytes와 CLOSED 기본 retrieval bytes |
 
 공통 option은 다음과 같습니다.
 
 - `--git-rev REV`: 작업 트리 대신 Git object를 `git show`로 읽습니다(read-only).
 - `--contract CONTENT_ID=PATH`: 다른 `harness_snapshot`의 `core.yaml`을 추가로 제공합니다.
 
-## 종료 코드
+새 명령의 종료 코드: `health` 0(error 없음)·1(error, `--strict`면 warning 포함)·2(호출 오류). `relocations` 0·1(결함)·2. `next-action` 0·1(Packet 해석 불가)·2. `evidence` 0.
+
+## 종료 코드(check·seed·skeleton)
 
 사람용 요약의 첫 줄 `판정: … (exit N)`과 JSON의 `verdict`는 종료 코드와 같은 값입니다.
 
@@ -51,6 +57,7 @@ python3 tools/cairn_check.py --project . check
 - 어떤 검사 대상 parent에도 결합되지 않은 matrix가 있습니다(`orphan_coverage_matrix`).
 - 계약이 주어지지 않은 snapshot의 Packet이나 matrix가 있습니다(`snapshot_unknown`).
 - `distribution.yaml`에 `core.yaml` 해시 기록이 없습니다(`contract_hash_unchecked`).
+- 프로젝트 계약의 `contract_version`이 도구가 구현한 것보다 새롭습니다(`contract_newer_than_tool`).
 - `--diagnostic` 실행이라 완전성을 주장할 수 없습니다.
 
 CI에서는 0만 성공으로 취급합니다. 3은 사람이 미평가 이유를 확인해야 한다는 뜻입니다.
@@ -100,7 +107,9 @@ task_root의 YAML 가운데 `kind: task`인데 문자열 id가 없거나 id가 �
 
 ## 판본
 
-`cairn_check --version`은 도구 판본과 대상 contract를 함께 출력합니다. 현재 도구 판본은 0.2.1이고, 대상 contract는 `1.0.0-candidate.4`, `contract_version` 2입니다. 각 Packet은 여전히 자기 `harness_snapshot`의 계약으로 해석하며, 새 계약을 소급 적용하지 않습니다.
+`cairn_check --version`은 도구 판본과 대상 contract를 함께 출력합니다. 현재 도구 판본은 0.3.0이고, 대상 contract는 `1.0.0-candidate.5`, `contract_version` 3입니다. candidate.4 Packet은 candidate.4 `core.yaml`을 `--contract <content_id>=<path>`로 주면 그 계약으로 검사합니다(개발 저장소에는 `tools/contracts/1.0.0-candidate.4/`에 공개본과 같은 해시의 사본이 있습니다).
+
+0.2.1은 candidate.5 Packet을 거부하지 않고 v3 규칙을 모른 채 PASS할 수 있습니다. candidate.5 프로젝트에는 0.3.0 이상을 쓰십시오. 각 Packet은 여전히 자기 `harness_snapshot`의 계약으로 해석하며, 새 계약을 소급 적용하지 않습니다.
 
 도구 판본은 contract `content_id`의 일부가 아닙니다. 도구를 고쳐도 contract 판본과 `content_id`는 바뀌지 않습니다.
 
@@ -108,3 +117,4 @@ task_root의 YAML 가운데 `kind: task`인데 문자열 id가 없거나 id가 �
 |---|---|
 | 0.2.0 | 개행 동치 대조, 판정·종료 코드 일치, seed 의존 closure |
 | 0.2.1 | seed 거짓 PASS 교정. 무관한 child 결함이 있어도 선택 행의 owner_criterion 결함을 FAIL로 보고합니다(R-1). 선택 행 artifact의 scope 판본 불일치를 INCONCLUSIVE로 보고합니다(R-2) |
+| 0.3.0 | candidate.5: `next-action`·`health`·`relocations`·`evidence`, v3 VS 규칙(evidence_manifest 해결·tier 중복·residual id 중복·종료 Task 자기 소유 residual), `contract_newer_than_tool`, 비ASCII 경로 Git 목록(`-z`) |

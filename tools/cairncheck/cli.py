@@ -1,12 +1,17 @@
 """cairn_check CLI. 모든 명령은 읽기 전용이며 결과를 표준 출력으로만 낸다.
 
-종료 코드(check·seed·skeleton 공통):
+종료 코드(check·seed·skeleton 공통. health·relocations·next-action은 아래 별도):
   0  PASS          평가 대상 전부가 결정적 검사를 통과했다(정확성·인수가 아니다)
   1  FAIL          결정적 계약 결함이 하나 이상 있다(미평가가 함께 있어도 FAIL)
   2  USAGE         호출·입력·환경 오류(인자 오류, Cairn 제어 파일·입력 파일·revision을
                  읽지 못함, ruamel.yaml 없음)
   3  INCONCLUSIVE  결함은 없지만 미평가·재확인 대상이 있다(검사한 Packet 없음 포함,
                  성공으로 취급하지 않는다)
+
+health: 0 error 없음(warning·info 보고) / 1 error 있음(--strict면 warning도 1) / 2 호출 오류
+relocations: 0 결함 없음 / 1 결함 / 2 호출 오류 / 3 미평가(identity를 증명할 수 없는 연결)
+next-action: 0 projection 계산 / 1 Packet 해석 불가 / 2 호출 오류
+evidence: 0
 """
 from __future__ import annotations
 
@@ -119,6 +124,19 @@ def main(argv: list[str] | None = None) -> int:
     seed.add_argument("--parent", required=True)
     seed.add_argument("--matrix", required=True)
     seed.add_argument("--criterion", required=True, help="<task ID>#<criterion ID>")
+    nxt = sub.add_parser("next-action", help="Packet의 결정적 next action projection(runtime 독립 경계)")
+    nxt.add_argument("--packet", required=True)
+    nxt.add_argument("--git", action="store_true", help="working tree Git 상태를 recovery.checkpoint와 대조")
+    hl = sub.add_parser("health", help="project health(index·봉인·relocation·residual·adapter·검증 surface)")
+    hl.add_argument("--json", action="store_true")
+    hl.add_argument("--since", help="이 Git revision 이후 봉인 경로 변경도 대조")
+    hl.add_argument("--strict", action="store_true", help="warning도 종료 코드 1")
+    hl.add_argument("--residuals", action="store_true", help="residual liveness만")
+    hl.add_argument("--today", help="기한 계산 기준일 YYYY-MM-DD(재현용)")
+    rl = sub.add_parser("relocations", help="relocation ledger 검사와 옛 locator 해석")
+    rl.add_argument("--resolve", action="append", default=[], help="해석할 옛 경로(반복 가능)")
+    ev = sub.add_parser("evidence", help="Task별 evidence tier·bytes·temperature 계산")
+    ev.add_argument("--task")
     args = parser.parse_args(argv)
     try:
         return _dispatch(args)
@@ -138,6 +156,63 @@ def _dispatch(args: argparse.Namespace) -> int:
             raise UsageError(f"읽기 실패: {path}: {doc.error}")
         return doc.data
 
+    if args.command == "next-action":
+        from .nextaction import project_next_action
+        result = project_next_action(project, args.packet, observe_git=args.git)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 1 if result.get("error") else 0
+    if args.command == "health":
+        import datetime
+        from .health import Health
+        if args.since:
+            _verify_rev(Path(args.project), args.since, "--since")
+        today = datetime.date.fromisoformat(args.today) if args.today else None
+        report = Health(project, since=args.since, today=today).run(residuals_only=args.residuals)
+        if args.json:
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+        else:
+            print(f"health: {report['status']} · error {report['counts']['error']} · warning {report['counts']['warning']}"
+                  f" · info {report['counts']['info']} · Packet {report['packets']} · 봉인 경로 {report['sealed_paths']}")
+            for f in report["findings"]:
+                print(f"  [{f['severity']}] {f['check']} {f['where']}: {f['message']}")
+            print("검사하지 않은 것: " + "; ".join(report["not_checked"]))
+            print(f"의미: {report['meaning']}")
+        if report["counts"]["error"] or (args.strict and report["counts"]["warning"]):
+            return 1
+        return 0
+    if args.command == "relocations":
+        from .lifecycle import load_layout
+        from .relocation import load_ledger, resolve, validate
+        layout = load_layout(project)
+        ledger = load_ledger(project, layout["relocation_ledger"], project.contracts.get(project.content_id))
+        if ledger.present and not any(f["severity"] == "error" for f in ledger.findings):
+            validate(project, ledger)
+        if not args.git_rev and not any(f["severity"] == "error" and f["code"] != "relocation_ledger_rewritten"
+                                        and f["code"].startswith("relocation_ledger_") for f in ledger.findings):
+            from .relocation import baseline_check
+            baseline_check(project, ledger)
+        if ledger.present:
+            from .health import Health
+            checker = Health(project)
+            checker.ledger = ledger
+            checker._validated = True
+            checker._sealed_retire()  # 봉인 기록의 retire 금지(R6-02)
+            checker._packet_relocation()  # Task Packet relocation 금지(R8-03)
+        resolved = []
+        for path in args.resolve:
+            final, steps, problem = resolve(ledger, path) if ledger.present else (path, 0, None)
+            resolved.append({"from": path, "to": final, "steps": steps, "problem": problem,
+                             "retired": final is None and not problem})
+        out = {"ledger": ledger.path, "present": ledger.present, "entries": len(ledger.entries),
+               "findings": ledger.findings, "resolved": resolved}
+        print(json.dumps(out, ensure_ascii=False, indent=2))
+        if any(f["severity"] == "error" for f in ledger.findings) or any(r["problem"] for r in resolved):
+            return 1
+        return 3 if ledger.findings else 0  # 미평가(identity를 증명할 수 없는 연결)는 통과가 아니다
+    if args.command == "evidence":
+        from .evidence import evidence_report
+        print(json.dumps(evidence_report(project, args.task), ensure_ascii=False, indent=2))
+        return 0
     if args.command == "check":
         baseline = None
         if args.since:
