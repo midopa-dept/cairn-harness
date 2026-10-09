@@ -1,4 +1,4 @@
-contract_version: 2
+contract_version: 3
 language: ko
 # 이 파일의 key별 구획이 정본이다. 실행기나 표현식 평가 언어가 아니다.
 constitution:
@@ -7,6 +7,9 @@ constitution:
   distinctions: VERIFIED·ACCEPTED·CLOSED와 상하위 인수는 자동 대체되지 않는다.
   independence: candidate를 생성·수정한 actor는 그 candidate의 acceptance actor가 될 수 없다. 독립 판단이 요구되면 추가로 생성자 판단 맥락과 분리한다.
   honesty: 미실행·불확실·근거 미확보를 PASS로 바꾸거나 원결과를 소급 변경하지 않는다.
+  durability: 작업 상태의 authority는 repository bytes·Git identity·Task Packet·durable evidence·사용자 결정 기록뿐이다. runtime 개인 메모리·thread·숨은 agent 상태·local TODO·대화 reasoning은 authority가 아니다.
+  portability: 계약의 의미·상태·권한·다음 행동·인수 의미는 실행 runtime과 무관하다. runtime adapter는 수행 방법만 바꾸며 무엇을·언제·누가 할 수 있는지는 바꾸지 않는다.
+  preservation: 정리·이동·압축은 삭제가 아니다. 보존·분류·색인·점진 회수로 수행하며 봉인된 기록을 고치지 않는다.
 
 authority:
   capabilities: [read, record, plan, edit, verify, review, accept, integrate]
@@ -20,6 +23,11 @@ authority:
     - 역할 특화는 하나의 base 역할 allow의 부분집합과 추가 deny만 허용한다. 노드/호출의 roles와 판정 역할 조건은 base로 대조하고 현재 role에는 실제 특화 ID를 기록한다. 다중 상속은 없다.
     - 프로젝트 설정은 gate와 제한을 추가할 수만 있다. Core 변경은 명시적 업데이트 작업이다.
     - 범위·기준·권한 변경은 계획 식별을 갱신하고 필요한 인간 판단을 거친다. 기존 금지를 조용히 제거하지 않는다.
+    - scope.authorization이 위임의 마지막 단계(예를 들어 인수까지)를 명시하면 그 단계 노드의 complete_when·sets(인수 단계라면 ACCEPTED 설정)까지 수행하고, 그 다음 노드로의 전이·상태 설정·효과는 scope.allow가 허용해도 하지 않는다. 남은 다음 행동은 기록·보고만 한다.
+    - scope.authorization은 append-only다. 새 세션·runtime의 사용자 위임은 날짜·actor와 함께 덧붙이고 기존 위임 문장을 고치거나 지우지 않는다. 위임 문장 추가가 scope.write·allow·deny·criteria를 바꾸지는 않으며 그 변경은 plan_change다.
+    - Task별 사용자 위임은 그 Packet의 scope.authorization에만 기록한다. project.yaml에는 여러 Task에 걸친 지속 경계만 두고 위임 이력을 누적하지 않는다.
+    - 실제 효과는 위 교집합과 runtime.effective의 교집합 안에서만 낸다. runtime 선언이나 adapter는 권한을 만들지 않는다.
+    - scope.write는 artifact_lifecycle.sealed에 해당하는 경로나 그 상위 디렉터리를 포함할 수 없다. 예외는 이 Task가 relocation ledger에 기록하는 bytes 불변 move의 from·to뿐이다. 봉인 기록의 정정은 새 기록으로 덧붙인다.
   isolation:
     default: 역할별 필요한 읽기·쓰기·도구 범위를 제한한다.
     judgment: 생성자의 판단 맥락과 분리된 한정 맥락에서 필수 독립 판단을 한다.
@@ -29,6 +37,31 @@ authority:
     - 사용자·독립 검토자의 승인/판정을 꾸며내기
     - 금지 경로·다른 작업자의 출력에 무단 쓰기
     - 실패·소비 이력 삭제 또는 한도 임의 초기화
+
+# runtime 독립 의미. 특정 도구 이름은 adapter만 가진다.
+runtime:
+  capabilities:
+    read_files: 허가된 project 파일을 읽는다.
+    edit_files: 허가된 project 파일을 쓴다.
+    execute_commands: 검증·빌드 등 명령을 실행하고 결과를 관찰한다.
+    git: 저장소 상태·identity를 읽고 위임된 commit/push를 수행한다.
+    network: 외부 네트워크에 접근한다.
+    spawn_independent_context: 부모 대화와 producer reasoning을 상속하지 않고 지정한 bounded input만 받는 새 판단 맥락을 만든다. 대화 fork·resume·continuation·요약 전달은 이 capability가 아니다.
+    browser_observation: 실제 browser 화면·상호작용을 관찰한다.
+    production_read: production 상태를 읽는다.
+    production_write: production에 효과를 낸다.
+    human_interaction: 현재 사용자에게 질문하고 응답을 받는다.
+  states: [available, unavailable, gated, not_checked]
+  effective: 사용 가능한 capability는 adapter 선언 ∩ 현재 runtime의 실제 sandbox·permission 관찰 ∩ authority.effective다. 선언·설정·adapter 문장은 권한이나 가용성을 만들지 않는다. gated는 실행 전 별도 사용자 승인 또는 permission prompt가 필요하다는 뜻이다.
+  observe: admit·recover와 runtime 전환 때 필요한 capability만 bounded하게 관찰하고 runtime_observations에 append한다. 이전 runtime의 관찰을 재사용하지 않는다. 응답할 사용자가 없는 비대화형 실행에서 human_interaction은 unavailable이다.
+  missing: 필요한 capability가 없으면 alternate_path(같은 의미를 보존하는 다른 수단과 그 근거 기록)·not_available(이 runtime에서 수행 불가, 다른 runtime이나 사용자 행동이 필요)·not_run(해당 검증을 실행하지 않음, PASS 아님)·blocker(의존 효과 중단과 recovery) 중 하나로 기록한다. 없는 capability를 성공으로 가정하지 않으며 계약 요구를 완화하지 않는다.
+  adapter_boundary: runtime adapter는 instruction 진입점, capability와 실제 도구의 대응, capability 탐지, runtime 관례(commit trailer 등)만 가진다. adapter는 gate를 줄이거나 acceptance·self-acceptance 금지를 완화하거나 product requirement를 추가하거나 authority를 확대하거나 next action 의미를 바꿀 수 없다. 충돌하면 이 Core가 우선한다.
+  instructions: 공통 운영 계약은 AGENTS.md 하나에 둔다. runtime 전용 진입 파일은 그 공통 계약 import와 adapter 참조만 가진다. 공통 규칙을 runtime 파일에 복제하지 않는다. 프로젝트 로컬 추가는 AGENTS.md 로컬 절에 두고 의미 동등성을 보존한다.
+  handoff: 작업 인계의 근거는 repository bytes·Git identity·Task Packet·durable evidence·사용자 결정 기록뿐이다. 이어받는 runtime은 Packet을 읽고 Git HEAD·working tree를 recovery.checkpoint와 대조한다. 불일치는 Packet에 기록하고 진행 전에 보고한다. 출처를 기록으로 설명할 수 없는 변경이 있으면 recovery.status를 blocked로, reason에 경로와 관찰을 남기고 사용자 확인 전에는 제품 효과·다음 단계를 진행하지 않는다. human_interaction이 없으면 그 상태로 멈추는 것이 blocker 처리다. 쓰기 범위 밖이라는 이유만으로 격리하고 진행하지 않는다. reset·clean·stash로 출처 불명 bytes를 지우지 않고 완료된 단계를 반복하지 않는다.
+  checkpoint: 턴·세션을 끝내거나 다른 runtime이 이어받을 수 있는 지점에서는 workflow.node/state와 recovery.checkpoint가 실제와 일치해야 한다. 재개에 필요한 최소 상태만 승격하며 모든 scratch 계산을 durable 기록으로 만들지 않는다.
+  concurrency: 같은 working tree에서 두 runtime이 같은 Packet이나 겹치는 scope.write를 동시에 진행하지 않는다.
+  actors: actor.runtime에 실행 runtime family를 기록한다. 권장 actor.id 형식은 <runtime>-<task>-<role>이다. 다른 runtime의 actor ID를 재사용하지 않는다. 이어받은 actor가 candidate를 수정하면 producers에 추가한다.
+  independence: runtime이 다르다는 사실은 독립 판단의 근거가 아니다. 다른 runtime이라도 producer reasoning을 입력받았으면 분리를 주장하지 않는다. 같은 runtime이라도 spawn_independent_context의 실제 수단과 bounded input, producer reasoning 배제를 관찰·기록하면 독립 판단이 될 수 있다. 독립 맥락은 그 성질(producer와 다른 actor, 부모·producer 대화 미상속, bounded input으로 시작)로 판정하며 누가 만들었는지는 수단의 차이다. 사용자나 외부 orchestrator가 그 성질로 연 새 세션은 그 자체로 독립 맥락이며 그 세션의 actor는 자기 시작 입력과 대화 미상속을 근거로 기록한다. 현재 세션이 producer 대화를 이어받았거나 시작 입력을 확인할 수 없을 때만 새 맥락을 spawn해야 한다.
 
 roles:
   coordinator:
@@ -88,7 +121,7 @@ policies:
   bootstrap:
     when: project.yaml의 핵심 설정이 비어 있고 활성 Task Packet이 없으며 사용자가 프로젝트 목표/요구를 제공했다.
     delegation: 현재 요청을 최초 setup 위임으로 기록한다. 저장소 상태를 먼저 읽고 admit에서 로컬 설정·bootstrap Packet만 준비한다. 기존 정보로 정해지는 값은 다시 묻지 않는다.
-    scope: 같은 standard-change의 plan에서 문서 준비 범위/기준을 정하고 execute에서 프로젝트 목표·requirement baseline·핵심 사용자 흐름·필요한 초기 domain/data 개념과 검증 전략을 정본으로 준비한다. 최소 한 문서의 절로 합칠 수 있다.
+    scope: 같은 standard-change의 plan에서 문서 준비 범위/기준을 정하고 execute에서 프로젝트 목표·requirement baseline·핵심 사용자 흐름·필요한 초기 domain/data 개념과 검증 전략을 정본으로 준비한다. 최소 한 문서의 절로 합칠 수 있다. 사용자-facing UI가 있으면 interaction·visual 기준과 그 승인 관찰 방법(design readiness)을 baseline 항목으로 확인한다. project.yaml layout을 채워 현재 문서와 Task·evidence·provenance 위치를 분리한다.
     baseline: 기존 정본이 있으면 재사용·대조하며 덮지 않는다. 최초 요청에 명시된 requirement의 충실한 최초 기록은 사용자 권위의 기록이며 canonical_requirement 변경이 아니다. 이후 baseline 변경 또는 agent의 새로운 정본 requirement 추가는 기존 인간 gate 대상이다. 다른 고영향 gate는 면제하지 않는다.
     unknowns: 원요구·도출 가능한 내용·미결정 제안을 구분하고 출처를 남긴다. 실제 판단이 필요한 unresolved decision만 질문하며 미승인 제안을 정본 의무로 확정하지 않는다.
     handoff: 정본의 명시 참조에서 초기 manifest를 도출하고 첫 implementation Packet을 OPEN으로 준비한다. 공통 요구·architecture·security 등 governing 정본의 위치·ID/제목·짧은 적용 범위를 기존 정본의 목차/요약에 남겨 이후 context.applicability 점검이 가능하게 한다. 모든 문서에 edge를 미리 연결하거나 별도 registry를 만들지 않는다. 최초 준비 범위는 현재 요청과 기존 정본으로 대조하며 아직 만들지 않은 baseline을 존재한다고 기록하지 않는다. 후속 작업 참조로 연결하며 bootstrap의 완료를 기다리는 child로 만들지 않는다. 필요한 인간 결정은 해당 효과 전에 멈추고, bootstrap 자체도 검증·비producer 인수·종료를 거친다. setup 완료는 제품 구현 완료가 아니다.
@@ -103,8 +136,8 @@ policies:
     authority: 적용 조건을 확인한 계획에 delivery.required=true와 허가된 대상·근거 기록 방식을 둔다. 기존 integrator 역할·close 노드·Task 범위의 교집합을 유지한다. 조건 자체가 commit/push 권한을 부여하지 않는다. remote/branch 대상은 기존 설정·위임에서 확인한다.
     forbidden: force push, 예상 밖 원격 변경의 파괴적 reconciliation, scope 밖 변경 포함, 승인되지 않은 branch/history rewrite는 금지한다.
     incomplete: Git이 아니거나 위임/권한/remote가 없으면 제품 검증 실패로 바꾸지 않는다. delivery가 필요하면 미완료 조건을 기록하고 필요한 좁은 사용자 행동만 요청한다. 원격 거절이면 로컬 결과를 보존한다. 전달 불필요는 이유를 기록한다.
-    evidence: 실제 commit/push 결과·로컬/원격 대상 identity·clean 관찰을 기존 작업/런타임 기록 또는 최종 보고에 남기고 delivery에 연결한다. 미래 성공을 미리 기록하지 않는다. 추적 Packet의 사후 수정으로 dirty가 되면 clean으로 주장하지 않으며 기록 방식은 close 계획에서 정한다.
-  human_gate_tags: [architecture, authentication_security, db_migration, canonical_requirement, equivalent_high_impact]
+    evidence: 실제 commit/push 결과·로컬/원격 대상 identity·clean 관찰을 delivery에 연결한다. 미래 성공을 미리 기록하지 않는다. 추적 Packet의 사후 수정으로 dirty가 되면 clean으로 주장하지 않는다. close commit 자체처럼 Packet에 미리 쓸 수 없는 사실은 대화·최종 보고에만 두지 않고 layout.delivery_ledger에 한 줄로 append한다. 그 append는 다음 commit 또는 다음 Task가 수행해도 되며 해당 Packet을 고치지 않는다.
+  human_gate_tags: [architecture, authentication_security, db_migration, canonical_requirement, production_effect, equivalent_high_impact]
   risk: 기존 승인 계약을 사용하는 것과 계약 자체를 바꾸는 것을 구분한다. tags 누락으로 실제 고영향 변경을 면제하지 않는다.
   independence_default: 고영향 변경 또는 프로젝트/작업이 요구한 검증·인수에는 독립 판단을 적용한다. 그 외에는 필수 독립 검토 단계를 추가하지 않아도 되지만 producer의 자기 인수 금지는 항상 적용한다.
   verification: context.applicability로 대조한 공통 의무를 포함해 공개 경로·관련 음성 조건·교차 영향을 골라 검증한다. 선택된 criteria의 PASS만으로 미해결 적용 의무를 덮지 않는다. 관련 없는 전수 감사나 고정 반복 횟수는 없다. 관찰은 요구가 가리키는 사용 조건을 직접 보아야 하며 proxy_substitution의 대체를 PASS로 쓰지 않는다. 약한 관찰을 썼으면 그 사실을 criterion과 잔여 위험에 남긴다.
@@ -117,19 +150,27 @@ policies:
   regression_guards: 변경이 비대상 사용자 체감 품질에 영향을 줄 수 있으면 baseline 대비 비회귀 criterion을 둔다. 자동 반복·continuation·retry는 진전하거나 멈춘다는 음성 검사를 포함한다. 공유 파생값의 정의를 바꾸면 결정적 사용처 검색으로 기존 consumer를 나열하고 인수된 consumer의 재적용성을 교차 영향으로 기록한다. 새 관계 vocabulary는 두지 않는다.
   scope_complete: 범위 전체 탐색을 맡았으면 첫 결함 뒤에도 안전한 독립 영역을 완료하거나 미검증 범위를 표시한다.
   escalation: 범위 밖 발견은 기록·인계한다. 필요한 위임·정책 판단만 질문하며 기존 유효 승인을 형식상 다시 요구하지 않는다.
+  escalation_classes:
+    derivable: 정본·승인된 결정·현재 evidence에서 답이 유일하게 도출되고 human_gate_tags에 해당하지 않는다. 진행하며 도출 출처를 plan.summary나 criteria에 남긴다.
+    ambiguous_semantic: 정본·결정 안에 둘 이상의 정당한 제품·설계·정책 해석이 있고 각 해석의 출처를 적을 수 있다. 또는 독립 actor 사이의 의미 해석 불일치가 한 번의 rework 뒤에도 남는다. decision_questions 형식의 Human Gate로 올리고 gate_class ambiguous_semantic을 기록한다.
+    high_impact: 의미는 명확하지만 human_gate_tags에 해당한다. Review Brief와 plan.identity에 결합한 명시 승인을 받고 gate_class high_impact를 기록한다. ambiguous_semantic과 겹치면 의미 질문을 먼저 해결한 plan에 승인을 결합한다.
+    triggers: 결정적 경계(state·node·권한·gate 필요·candidate identity·acceptance 적격)의 판단이 actor나 runtime 사이에 다르면 escalation이 아니라 계약 해석 결함이다. 결정적 검사로 해소하고 해소되지 않으면 blocker로 남긴다. 같은 판단의 반복 실행 결과 불일치, producer·reviewer 판정 충돌, 서로 모순되는 evidence는 추가 검증이나 독립 검토를 요구하는 신호이며 그 자체로 승인이나 생략 근거가 아니다.
+    confidence: 모델 confidence·자기평가·판단 점수는 escalation class를 낮추거나 gate·검토를 생략하는 근거가 아니다. 판단 신호는 정해진 최소 절차 위에 회수·검증·검토·인간 확인을 추가하는 제안만 할 수 있다.
+  decision_batching: 제품·정본 효과 없이 사용자 결정만 기록하는 질문들은 하나의 decision Task 안에 누적하고 batch 단위로 정본화·검증·인수·전달한다. 각 답변은 받는 즉시 human_gate 또는 record로 Packet에 기록하고 다음 질문으로 진행한다. 결정을 정본에 반영하거나 효과를 내는 변경은 기존 lifecycle을 따른다.
+  closeout_freshness: close 계획은 이 Task가 바꾼 canonical·operational artifact를 가리키는 project index의 행을 갱신하거나 무변경 사유를 남긴다. 종료하는 Task를 current 실행 계획으로 남기지 않는다. project health의 index 검사는 이 의무의 결정적 보조이며 대체가 아니다.
 
 # guard 이름은 아래 문장과 결합한 검사 계약이다. boolean을 적었다고 충족되는 것이 아니다.
 guards:
-  admitted: 프로젝트 이름·자료 루트·접근 경계와 작업 목적·기준·위임·역할·입력 참조가 유효하고 현재 snapshot이 일치한다. 필수 독립 판단에는 실제 판단 경계도 필요하다.
-  plan_current: plan의 식별·범위·기준·효과·위험·유한 복구 한도를 자기검토했으며 변경 대상에 적용 가능하다. context.applicability의 bounded check를 수행해 적용 의무를 plan/criteria/manifest에 반영하고 제외 이유·미해결을 남겼다. 미해결 의무에 의존하는 범위의 계획 완전성은 확정하지 않으며 그 범위에는 이 guard가 성립하지 않는다. 독립 범위만 진행하려면 기존 범위/계획 변경 계약으로 명시적으로 좁힌다. scope.children이 있으면 packet_semantics.coverage에 따라 plan.coverage_matrix의 선언 scope 모든 단위가 행을 갖고 모든 행이 처분과 필수 field를 가지며 owned 행의 owner_task가 children으로 해결된다. 이 Packet이 어떤 parent matrix의 owner_task이면 그 행이 모두 자기 현재 criterion으로 refine됐거나 반환 사유와 함께 unresolved로 기록됐다. 미처분·미해결 행은 위의 미해결 의무와 같다.
+  admitted: 프로젝트 이름·자료 루트·접근 경계와 작업 목적·기준·위임·역할·입력 참조가 유효하고 현재 snapshot이 일치한다. 필수 독립 판단에는 실제 판단 경계도 필요하다. 계획 효과에 필요한 capability를 현재 runtime에서 관찰해 runtime_observations에 기록했고 없는 capability는 runtime.missing으로 처리했다. 이어받은 작업이면 recovery.checkpoint와 Git 상태 대조 결과가 기록됐다.
+  plan_current: plan의 식별·범위·기준·효과·위험·유한 복구 한도를 자기검토했으며 변경 대상에 적용 가능하다. context.applicability의 bounded check를 수행해 적용 의무를 plan/criteria/manifest에 반영하고 제외 이유·미해결을 남겼다. 미해결 의무에 의존하는 범위의 계획 완전성은 확정하지 않으며 그 범위에는 이 guard가 성립하지 않는다. 독립 범위만 진행하려면 기존 범위/계획 변경 계약으로 명시적으로 좁힌다. scope.children이 있으면 packet_semantics.coverage에 따라 plan.coverage_matrix의 선언 scope 모든 단위가 행을 갖고 모든 행이 처분과 필수 field를 가지며 owned 행의 owner_task가 children으로 해결된다. 이 Packet이 어떤 parent matrix의 owner_task이면 그 행이 모두 자기 현재 criterion으로 refine됐거나 반환 사유와 함께 unresolved로 기록됐다. 미처분·미해결 행은 위의 미해결 의무와 같다. scope.write가 봉인 경로나 그 상위 디렉터리와 겹치지 않는다. 새 evidence 출력이 있으면 evidence_manifest.root가 이 Task의 evidence namespace(layout.evidence_root 아래 Task ID)를 가리키며 다른 Task의 evidence 경로에 출력하지 않는다.
   gate_satisfied: policies.bootstrap.baseline의 최초 요구 기록 예외만 적용한 뒤 실제 영향에 맞는 baseline/추가 gate가 없거나 현재 plan.identity에 결합된 인간 승인과 위임 근거가 있다.
   candidate_ready: candidate.id와 비어 있지 않은 산출물 manifest 판본 집합 및 생성/수정 맥락을 실제로 식별했다.
   evidence_current: verification.verdict가 pass이며 모든 필수 criteria를 현재 후보에 결합된 available/pass 근거가 덮고 미해결 모순/실패가 없다. context.applicability에서 발견한 적용 의무도 포함하며 의존 범위에 미해결 의무가 있으면 성립하지 않는다. 재사용 근거는 영향 분석으로 적용성이 명시됐다.
-  independent_satisfied: 검증 단계에 필요한 독립 검토가 적격 분리 맥락에서 이루어졌고 분리 근거가 있다. 인수자 독립성은 뒤의 accepted_current에서 따로 확인한다. baseline/프로젝트/작업 요구를 합집합으로 판단한다. false로 baseline을 면제하지 않으며 미요구이면 생략 이유를 verification에 둔다.
+  independent_satisfied: 검증 단계에 필요한 독립 검토가 적격 분리 맥락에서 이루어졌고 분리 근거가 있다. 인수자 독립성은 뒤의 accepted_current에서 따로 확인한다. baseline/프로젝트/작업 요구를 합집합으로 판단한다. false로 baseline을 면제하지 않으며 미요구이면 생략 이유를 verification에 둔다. 분리 근거는 runtime.capabilities.spawn_independent_context에 맞는 실제 수단(fresh context·bounded input·producer reasoning 배제)의 관찰이며 runtime 차이·fork·resume은 근거가 아니다.
   parent_reconciled: scope.children이 없거나 모든 필요한 하위 인수·후보·연결 근거와 상위 결합 영향/잔여 의무를 확인했다. Coverage Matrix가 있으면 현재 판본의 검사 evidence가 결합돼 있고 미처분·unresolved 행이 없다. owned 행은 모든 owner_task의 현재 criterion으로 owner_criterion이 해결되고 그 child가 ACCEPTED 이상이다. deferred의 to가 해결되며 children 밖이면 승인 decision이 있다. excluded의 decision이 승인됐다. 모든 행의 drift가 ok이거나 재확인됐다. informative·분할 행의 표본 확인을 acceptance.basis에 남겼다.
   accepted_current: 현재 후보·범위·근거에 대한 권한 있는 acceptance 결정이 있고 policies.acceptance에 따라 acceptance.actor.id가 candidate.producers의 모든 actor.id와 다르며 실제 actor도 구분된다. 역할/context 변경은 면제가 아니다. 필요 인간 조건과 추가 bounded-context 독립성도 충족됐다. 적격 비producer reviewer는 같은 candidate의 acceptance까지 수행할 수 있다.
   delivery_current: delivery가 현재 인수 대상과 같거나 허용된 변경분/적용성을 설명하며 지정 전달 의무가 완료됐다.
-  settled: 진행/불명확 실행이 없고 미해결 차단 의무가 없다. 잔여 위험과 후속 소유자를 인계했으며 다음 작업을 자동 시작하지 않는다. 잔여 위험은 packet_semantics.residual 구조로 소유자와 후속 조건을 가져야 인계로 인정된다.
+  settled: 진행/불명확 실행이 없고 미해결 차단 의무가 없다. 잔여 위험과 후속 소유자를 인계했으며 다음 작업을 자동 시작하지 않는다. 잔여 위험은 packet_semantics.residual 구조로 소유자와 후속 조건을 가져야 인계로 인정된다. 종료하는 이 Task 자신을 owner로 둘 수 없다. 봉인 evidence가 이 Task에서 수정되지 않았고 policies.closeout_freshness의 index 의무를 처리했다. evidence_manifest가 있으면 authoritative 항목이 manifest로 해결된다.
   recoverable: 실행/효과를 대조했고 복귀 후 필요한 새 시도에 남은 한도·권한·필수 격리가 충분하다. 추가 실행이 없으면 한도 소진만으로 기존 적격 판정을 무효화하지 않는다. 사용자 중단이면 새 지시 전 복귀하지 않는다.
 
 # 모든 노드는 authority와 context 계약을 적용한다. graph별 상태는 v1에서 추가하지 않는다.
@@ -213,7 +254,7 @@ subgraphs:
     roles: [reviewer]
     allow: [read, record, review]
     steps: [bound_context, judge, record]
-    input: 현재 후보·기준·필요 원자료/실제 결과와 검토 criterion이 소유한 Coverage Matrix 행의 정본 전문(현재 판본에서 excerpt로 찾아 조립); 생성자 자기점수/설득·다른 시도 결론은 초기 맥락에서 제외
+    input: 현재 후보·기준·필요 원자료/실제 결과와 검토 criterion이 소유한 Coverage Matrix 행의 정본 전문(현재 판본에서 excerpt로 찾아 조립); 생성자 자기점수/설득·다른 시도 결론은 초기 맥락에서 제외. 맥락은 runtime.capabilities.spawn_independent_context의 수단으로 만들고 사용한 수단과 입력 목록을 independence에 기록한다. 다른 runtime의 reviewer도 같은 입력 규칙을 따른다
     output: decisions의 independent_review와 independence의 분리 방법·근거
     failure: 생성/수정 맥락 그대로의 자기평가는 불가하다. 실제 맥락 분리가 불가능하면 상향 판단하고 충족으로 기록하지 않는다.
   human-gate:
@@ -240,6 +281,7 @@ context:
   relations: [references, governed_by, implements, verifies]
   seed: 현재 역할·노드·Task Packet·인수 기준·관련 manifest. 분해 parent의 Coverage Matrix는 전체를 넣지 않고 child는 owner_task나 to가 자기인 행만 회수한다.
   retrieval: [id_metadata, summary_heading, excerpt, full_artifact]
+  evidence_retrieval: 다른 Task의 기록은 artifact_lifecycle.temperature 순서로 회수한다. CLOSED Task는 Packet의 objective·state·delivery와 evidence_manifest.authoritative만 기본으로 읽고, 필요할 때만 supporting, 마지막으로 이유를 남기고 raw를 읽는다. evidence_manifest가 없는 이전 Packet은 decisions·delivery·verification.evidence 요약을 authoritative로 취급하고 원 log·screenshot은 raw로 취급한다. 같은 판본의 회수 결과는 재사용한다.
   projection:
     input: 프로젝트 정본의 명시적 ID/참조와 판본·선택 위치
     output: Packet artifacts에 task-local 노드·edge·출처를 도출; 전역 저장은 불필요
@@ -258,12 +300,54 @@ context:
     record: plan.summary에 점검 범위·선택/제외 이유·unresolved를 간결히 남긴다. 실제 회수한 관련 자료는 artifacts와 plan.artifacts에 넣고 적용 의무는 criteria에 반영한다. 추정 적용성은 선택 이유이지 정본 edge가 아니며 명시 참조가 없으면 links를 추가하지 않는다.
     unresolved: 적용 가능성이 높은 정본을 찾지 못하거나 접근 불가/적용성 불명이면 plan.summary와 의존 criteria에 unresolved 및 필요한 회수/판단을 남긴다. 없는 artifact 판본·edge·PASS 근거를 만들지 않는다. 해당 계획 완전성·검증 claim·VERIFIED는 보류하고 verification은 not_run 또는 inconclusive로 기록한다. 필요한 경우 기존 recovery로 차단 이유와 좁은 다음 행동을 남긴다.
     authority: scope.read 밖 접근은 허용하지 않는다. 기존 의무의 회수/반영만으로 Human Gate를 추가하지 않으며 실제 requirement·architecture·security 등의 변경에 기존 gate를 적용한다. 불충분한 탐색을 무관함으로 처리하거나 사용자 승인만으로 미확보 근거를 PASS로 바꾸지 않는다.
-  telemetry: 노출된 실제 input/cache/output만 범위·단위와 기록한다. 미노출 값을 추정하지 않으며 별도 계측 파일을 요구하지 않는다.
+  telemetry: 상위 telemetry 절을 따른다.
+
+artifact_lifecycle:
+  classes:
+    canonical: 현재 normative authority(요구·결정·설계·검증 정본). 기본 retrieval 대상이며 변경은 정본 변경 계약을 따른다.
+    operational: 프로젝트 운영 계약·index·registry·설정. 제품 요구를 추가하지 않는다.
+    decision: 사용자 결정 기록과 Human Gate brief. 결정은 정본에 반영돼야 current가 된다.
+    task: task_root의 Task Packet.
+    evidence: Task의 검증·검토·인수·전달 근거. evidence_manifest의 authoritative·supporting이 여기에 속한다.
+    raw_evidence: 실행 log·screenshot·trace 등 원자료. evidence_manifest.raw 또는 layout.raw_patterns로 판정한다.
+    historical: 대체됐거나 동결된 이전 정본·계획. 현재 의미를 확인할 때 locator로 회수한다.
+  classification: class는 저장하지 않고 project.yaml layout 경로 선언, task_root, 각 Packet의 evidence_manifest와 artifacts.kind, 소유 Task 상태로 계산한다. 선언이 없으면 not_classified로 보고하며 추측으로 class를 정하지 않는다.
+  temperature:
+    hot: 활성 작업의 기본 seed·retrieval 대상. 현재 canonical·operational, 활성 Packet과 그 evidence.
+    warm: locator로 필요할 때 회수한다. CLOSED Task의 Packet 요약·authoritative evidence, decision.
+    cold: 감사·provenance 확인 때만 이유를 남기고 회수한다. CLOSED Task의 supporting·raw, historical.
+  evidence_tiers:
+    authoritative: 인수 판단이 직접 기댄 기록. candidate manifest·independent review·acceptance·production receipt·delivery 기록.
+    supporting: authoritative를 설명·재현하는 요약. regression summary·focused analysis·대조표.
+    raw: 원 실행 출력. log·screenshot·trace·dump.
+  sealed: 소유 Task가 CLOSED인 Packet과 그 evidence_manifest.root·authoritative·supporting·raw 경로, 이전 Packet에서는 CLOSED Task의 artifacts 중 kind evidence 경로, 그리고 layout.sealed에 선언한 경로는 봉인이다. evidence 경로의 봉인 추론은 task_root·layout.evidence_root·layout.sealed·그 Task의 evidence_manifest.root 안으로 한정한다. 제품 파일을 evidence로 기록했다고 그 파일이 봉인되지는 않는다. close 노드에서 ACCEPTED로 남은 이전 snapshot Task는 project health에서 활성으로 보지 않지만 봉인도 아니며, 필요하면 layout.sealed로 선언한다. 봉인 bytes는 수정·삭제·덮어쓰기하지 않고 봉인 namespace에 새 출력을 만들지 않는다. 봉인 여부는 변경 전 판본(commit된 HEAD 등) 기준으로 판정하며 working tree에서 Packet을 다시 열거나 manifest를 지워 봉인을 풀 수 없다. 재실행은 새 Task evidence namespace를 쓰고 정정은 새 기록이나 superseding 기록으로 덧붙인다. relocation ledger의 move는 bytes를 바꾸지 않으므로 허용되며 옮겨진 위치도 봉인이다. 봉인 namespace로 다른 파일을 옮겨 오는 것도 새 출력이다.
+  relocation:
+    ledger: layout.relocation_ledger의 append-only 기록으로만 artifact를 옮긴다. 이미 기록된 항목은 바꾸거나 지우지 않으며 한 번 채택한 ledger 파일 자체를 지우거나 옮기지 않는다. 역사 Packet의 locator는 고치지 않고 이전 경로 → ledger → 새 경로로 해석한다.
+    identity: 각 move는 이동 전 판본(commit된 from)의 content identity(git-blob 또는 디렉터리 git-tree)를 기록하며 새 경로의 현재 bytes가 그 identity와 같아야 한다. 이동 전 identity를 확인할 수 없는 새 항목은 미평가다. 같으면 selector 의미가 보존된다. 내용이 바뀌면 relocation이 아니라 새 artifact 또는 새 판본이다. 이동이 이어지면 각 단계의 identity가 같아야 하고 chain 끝의 현재 bytes도 그 identity여야 한다. 이동된 디렉터리의 일부를 다시 옮겨 identity를 증명할 수 없으면 그 연결은 미평가이며 정상 이동으로 주장하지 않는다.
+    resolution: 해석은 from이 정확히 같거나 디렉터리 from의 하위 경로인 항목을 따라가며 최대 16단으로 제한한다. cycle·누락 target·identity 불일치·같은 from의 중복은 결함이다. ledger가 옮긴 옛 locator는 옛 경로에 새로 생긴 파일로 해석하지 않는다.
+    packets: task_root의 Task Packet은 relocation·retire하지 않는다. 역사 Packet은 그 자리에 남고 evidence와 문서만 옮긴다.
+    retire: 대체 없는 제거는 kind retire와 회수 위치(Git revision)를 기록하며 봉인 기록에는 허용하지 않는다. compaction을 이유로 evidence를 지우지 않는다.
+  layout_default: layout 선언이 없으면 evidence_root .harness/evidence, relocation_ledger .harness/relocations.yaml, delivery_ledger .harness/deliveries.jsonl을 권장 기본값으로 쓴다. 권장 문서 구조는 docs = 사람이 현재 프로젝트를 이해하는 current documentation, .harness = Task·evidence·provenance다. 프로젝트는 다른 구조를 선언할 수 있다.
+
+project_health:
+  purpose: Task-level 검사(validation_contract.companion)와 별도로 프로젝트 정보구조·provenance·인계의 신선도를 본다. 결과는 권한·인수·Human Gate 판단이 아니다.
+  severities: [error, warning, info, not_checked]
+  error: 봉인 경로를 쓰기 범위로 가진 새 snapshot의 활성 Packet(relocation move 예외 제외), 봉인 bytes의 수정과 봉인 namespace의 새 출력, 봉인 기록(옮겨진 위치 포함)의 retire, relocation cycle·identity 불일치·누락 target, 새 snapshot Packet의 해석 불가 artifact 참조, 새 snapshot의 소유자 없는 residual, 공통 계약을 import하지 않는 runtime 진입 파일처럼 계약 위반이 확정적인 경우만 error다.
+  # 대표 검사. 도구는 같은 의미의 추가 info 신호(사본·크기·해석된 이동 등)를 낼 수 있다.
+  checks: [packet_parse, index_current_closed_task, index_target_missing, index_version_mismatch, artifact_reference_unresolved, relocation_integrity, sealed_write_scope, sealed_modified, sealed_namespace_added, sealed_retired, residual_owner_closed, residual_owner_missing, residual_owner_unresolvable, residual_condition_elapsed, residual_disposition_dangling, residual_disposition_dangling_target, residual_inherited_dangling, raw_evidence_growth, raw_evidence_in_current_docs, concurrent_write_scope, verification_surface_unregistered, verification_surface_missing, coverage_owner_closed_unrefined, adapter_import_missing, adapter_duplicates_common_contract, adapter_size, instruction_override_present, instruction_size_limit, project_config_task_log]
+  legacy: 다른 snapshot의 Packet은 schema를 소급하지 않고 state·scope·residual·artifacts 구조만 읽는다. 그 결과는 warning 이하로 보고한다.
+  runner_registry: 프로젝트는 선택적으로 verification registry(layout.verification_registry)에 검증 surface ID·명령·tier·구성 경로·discovery 패턴·의도적 제외 사유를 선언한다. discovery로 찾은 surface가 등록·제외 어디에도 없으면 warning이다. 이것은 선언 inventory와 실제 실행 surface의 drift 신호이며 특정 test framework를 요구하지 않는다.
+
+telemetry:
+  principle: 측정·비교·경고를 우선하며 hard budget을 두지 않는다. 노출된 실제 값만 범위·단위와 기록하고 관찰하지 못한 값은 null이다. 추정하지 않는다.
+  packet: Task 종료 전 Packet telemetry에 wall_clock_seconds·model_invocations·reviewer_runs·human_questions·files_read·retrieval_bytes·candidate_iterations·review_rejects·production_gates·runtime_handoffs·tokens를 아는 범위에서 남긴다.
+  computed: evidence bytes·tier별 bytes·raw 비중·Packet 크기·runtime 전환 횟수는 저장소에서 결정적으로 계산할 수 있으므로 agent가 기록하지 않고 검사 도구나 수동 계산으로 얻는다.
 
 distribution:
   identity: distribution.yaml의 content_id는 출하 당시 payload 경로와 바이트 해시의 결정적 식별자다. 자기 파일은 해시 대상에서 제외한다. 복사 후 project.yaml 설정/AGENTS 병합은 별도 로컬 변경이며 출하 manifest를 재작성하지 않는다.
   boundary: 복사본 안의 현재 계약으로 실행 의미를 이해할 수 있어야 한다. 외부 개발 자료·역사·절대/상위 탈출 경로를 참조하지 않는다.
-  customization: project.yaml에서 자료 루트·역할 권한 축소·추가 gate·런타임 경계를 설정한다. Core는 직접 덮어 고치지 않는다.
+  customization: project.yaml에서 자료 루트·역할 권한 축소·추가 gate·런타임 경계·layout·health 설정을 둔다. Core는 직접 덮어 고치지 않는다.
+  adapters: runtime 전용 진입 파일과 .harness/adapters 아래 runtime별 대응 파일은 배포 payload다. 프로젝트가 고친 adapter도 runtime.adapter_boundary를 지켜야 한다.
   update: 명시적 작업·변경 비교·권한 확인 뒤 snapshot을 교체한다. 활성 Packet은 이전 식별을 유지하거나 영향/승인 대조 후 명시적으로 전환한다.
   copy: 기존 파일과 충돌하면 자동 덮어쓰지 않는다. 프로젝트 설정과 활성 작업 기록은 새 기본값으로 덮지 않는다.
 
@@ -277,6 +361,7 @@ validation_contract:
     pass: 통과는 선언된 contract의 결정적 무결성 검사 통과만 뜻한다. 정확성·제품 인수·시각 품질·coverage의 의미적 충분성을 뜻하지 않으며 acceptance decision을 만들지 않는다.
     snapshot: 각 Packet은 자기 harness_snapshot 계약으로 해석한다. 다른 snapshot의 Packet은 그 계약이 주어질 때만 검사하며 새 계약을 소급하지 않는다.
     judgment: 확률적 판단 신호는 권한·결정·검사 결과가 아니며 이 검사 결과에 섞지 않는다.
+    projections: 선택 도구는 같은 결정적 규칙으로 next_action(packet_semantics.next_action의 projection), project_health, relocation 해석, evidence tier 계산을 낼 수 있다. 이 결과는 runtime과 무관하게 같아야 하는 경계의 계산이며 guard 충족·권한·인수가 아니다. 판단이 필요한 guard 부분은 requires_judgment로 따로 표시한다. 도구가 없으면 같은 규칙을 수동으로 적용하고 method manual을 기록한다.
   deferred_semantic_checks:
     - schemas 형식, role/node/subgraph/guard 참조, graph 전이의 유효성
     - 역할 특화·노드·작업의 권한 확대/금지 경로
@@ -295,6 +380,8 @@ schemas:
       - {$ref: '#/definitions/project'}
       - {$ref: '#/definitions/task'}
       - {$ref: '#/definitions/coverage_matrix'}
+      - {$ref: '#/definitions/relocation_ledger'}
+      - {$ref: '#/definitions/verification_registry'}
     definitions:
       text: {type: string, minLength: 1}
       texts: {type: array, items: {$ref: '#/definitions/text'}, uniqueItems: true}
@@ -311,6 +398,27 @@ schemas:
           id: {$ref: '#/definitions/text'}
           kind: {enum: [human, agent]}
           context: {$ref: '#/definitions/text'}
+          runtime: {$ref: '#/definitions/runtime_ref'}
+      runtime_ref:
+        type: object
+        additionalProperties: false
+        required: [family]
+        properties:
+          family: {type: string, pattern: '^[a-z][a-z0-9_]*$'}
+          version: {type: [string, 'null']}
+      capability_states:
+        type: object
+        additionalProperties: {enum: [available, unavailable, gated, not_checked]}
+      runtime_observation:
+        type: object
+        additionalProperties: false
+        required: [actor, family, capabilities, basis]
+        properties:
+          actor: {$ref: '#/definitions/text'}
+          family: {type: string, pattern: '^[a-z][a-z0-9_]*$'}
+          version: {type: [string, 'null']}
+          capabilities: {$ref: '#/definitions/capability_states'}
+          basis: {$ref: '#/definitions/text'}
       role:
         type: object
         additionalProperties: false
@@ -325,7 +433,9 @@ schemas:
         required: [kind, schema_version, project_id, artifact_roots, task_root, extra_human_gate_tags, role_specializations, runtime]
         properties:
           kind: {const: project}
-          schema_version: {const: 1}
+          schema_version: {enum: [1, 2]}
+          layout: {$ref: '#/definitions/layout'}
+          health: {$ref: '#/definitions/health_config'}
           project_id: {type: [string, 'null']}
           artifact_roots: {$ref: '#/definitions/paths'}
           task_root: {$ref: '#/definitions/path'}
@@ -341,6 +451,38 @@ schemas:
               name: {type: [string, 'null']}
               access_boundary: {type: [string, 'null']}
               judgment_boundary: {type: [string, 'null']}
+      layout:
+        type: object
+        additionalProperties: false
+        properties:
+          canonical: {$ref: '#/definitions/paths'}
+          operational: {$ref: '#/definitions/paths'}
+          decision: {$ref: '#/definitions/paths'}
+          historical: {$ref: '#/definitions/paths'}
+          sealed: {$ref: '#/definitions/paths'}
+          evidence_root: {$ref: '#/definitions/path'}
+          raw_patterns: {$ref: '#/definitions/texts'}
+          relocation_ledger: {$ref: '#/definitions/path'}
+          delivery_ledger: {$ref: '#/definitions/path'}
+          verification_registry: {$ref: '#/definitions/path'}
+      health_config:
+        type: object
+        additionalProperties: false
+        properties:
+          indexes:
+            type: array
+            items:
+              type: object
+              additionalProperties: false
+              required: [path]
+              properties:
+                path: {$ref: '#/definitions/path'}
+                current_sections: {$ref: '#/definitions/texts'}
+                canonical_sections: {$ref: '#/definitions/texts'}
+                version_marker: {$ref: '#/definitions/text'}
+          raw_evidence_warn_bytes: {type: integer, minimum: 1}
+          packet_warn_bytes: {type: integer, minimum: 1}
+          adapter_warn_bytes: {type: integer, minimum: 1}
       artifact:
         type: object
         additionalProperties: false
@@ -390,6 +532,7 @@ schemas:
           verdict: {enum: [approved, accepted, pass, rejected, deferred]}
           basis: {$ref: '#/definitions/text'}
           independence: {type: [string, 'null']}
+          gate_class: {enum: [ambiguous_semantic, high_impact, scope_change]}
       record_decision:
         type: object
         additionalProperties: false
@@ -413,7 +556,120 @@ schemas:
               risk: {$ref: '#/definitions/text'}
               owner: {$ref: '#/definitions/text'}
               condition: {$ref: '#/definitions/text'}
+              id: {$ref: '#/definitions/text'}
+              owner_kind: {enum: [human, task, role, future_task]}
+              owner_ref: {$ref: '#/definitions/text'}
+              due: {type: string, pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'}
+              inherited_from: {$ref: '#/definitions/residual_ref'}
+      residual_ref: {type: string, pattern: '^[^#\s]+#[^#\s]+$'}
       residuals: {type: array, items: {$ref: '#/definitions/residual'}, uniqueItems: true}
+      residual_disposition:
+        type: object
+        additionalProperties: false
+        required: [ref, status, basis]
+        properties:
+          ref: {$ref: '#/definitions/residual_ref'}
+          status: {enum: [resolved, superseded, transferred, accepted]}
+          to: {$ref: '#/definitions/residual_ref'}
+          basis: {$ref: '#/definitions/text'}
+      evidence_manifest:
+        type: object
+        additionalProperties: false
+        required: [root, authoritative, supporting, raw]
+        properties:
+          root: {$ref: '#/definitions/path'}
+          authoritative: {$ref: '#/definitions/texts'}
+          supporting: {$ref: '#/definitions/texts'}
+          raw: {$ref: '#/definitions/paths'}
+      count: {type: [integer, 'null'], minimum: 0}
+      telemetry:
+        type: object
+        additionalProperties: false
+        properties:
+          wall_clock_seconds: {$ref: '#/definitions/count'}
+          model_invocations: {$ref: '#/definitions/count'}
+          reviewer_runs: {$ref: '#/definitions/count'}
+          human_questions: {$ref: '#/definitions/count'}
+          files_read: {$ref: '#/definitions/count'}
+          retrieval_bytes: {$ref: '#/definitions/count'}
+          candidate_iterations: {$ref: '#/definitions/count'}
+          review_rejects: {$ref: '#/definitions/count'}
+          production_gates: {$ref: '#/definitions/count'}
+          runtime_handoffs: {$ref: '#/definitions/count'}
+          tokens:
+            type: object
+            additionalProperties: false
+            required: [source]
+            properties:
+              input: {$ref: '#/definitions/count'}
+              output: {$ref: '#/definitions/count'}
+              cache_read: {$ref: '#/definitions/count'}
+              source: {enum: [exposed, unavailable]}
+          notes: {type: string}
+      checkpoint:
+        type: object
+        additionalProperties: false
+        required: [actor, base, uncommitted, completed, remaining]
+        properties:
+          actor: {$ref: '#/definitions/text'}
+          base: {$ref: '#/definitions/text'}
+          uncommitted: {$ref: '#/definitions/paths'}
+          completed: {type: array, items: {$ref: '#/definitions/text'}}
+          remaining: {type: array, items: {$ref: '#/definitions/text'}}
+          note: {type: string}
+      relocation_ledger:
+        type: object
+        additionalProperties: false
+        required: [kind, schema_version, entries]
+        properties:
+          kind: {const: relocation_ledger}
+          schema_version: {const: 1}
+          entries:
+            type: array
+            items:
+              type: object
+              additionalProperties: false
+              required: [id, from, to, identity, kind, reason, task]
+              properties:
+                id: {$ref: '#/definitions/text'}
+                from: {$ref: '#/definitions/path'}
+                to:
+                  oneOf:
+                    - {type: 'null'}
+                    - {$ref: '#/definitions/path'}
+                identity: {type: string, pattern: '^git-(blob|tree):[0-9a-f]{40}$'}
+                kind: {enum: [move, retire]}
+                reason: {$ref: '#/definitions/text'}
+                task: {$ref: '#/definitions/text'}
+                retrievable_at: {$ref: '#/definitions/text'}
+      verification_registry:
+        type: object
+        additionalProperties: false
+        required: [kind, schema_version, surfaces, discovery, exclusions]
+        properties:
+          kind: {const: verification_registry}
+          schema_version: {const: 1}
+          surfaces:
+            type: array
+            items:
+              type: object
+              additionalProperties: false
+              required: [id, command, tier, paths]
+              properties:
+                id: {$ref: '#/definitions/text'}
+                command: {$ref: '#/definitions/text'}
+                tier: {enum: [deterministic, network, live, device, manual]}
+                paths: {$ref: '#/definitions/paths'}
+          discovery: {$ref: '#/definitions/texts'}
+          exclusions:
+            type: array
+            items:
+              type: object
+              additionalProperties: false
+              required: [path, reason]
+              properties:
+                path: {$ref: '#/definitions/path'}
+                reason: {$ref: '#/definitions/text'}
       local: {type: object}
       coverage_scope:
         type: object
@@ -484,7 +740,7 @@ schemas:
         required: [kind, schema_version, id, objective, harness_snapshot, workflow, scope, criteria, plan, artifacts, candidate, verification, decisions, delivery, recovery]
         properties:
           kind: {const: task}
-          schema_version: {const: 2}
+          schema_version: {const: 3}
           id: {$ref: '#/definitions/text'}
           objective: {$ref: '#/definitions/text'}
           harness_snapshot: {type: [string, 'null']}
@@ -573,6 +829,7 @@ schemas:
               receipt: {type: [string, 'null']}
               applicability: {type: [string, 'null']}
               residual_risks: {$ref: '#/definitions/residuals'}
+              residual_dispositions: {type: array, items: {$ref: '#/definitions/residual_disposition'}}
           recovery:
             type: object
             additionalProperties: false
@@ -583,14 +840,31 @@ schemas:
               attempts: {type: array, items: {$ref: '#/definitions/attempt'}}
               reason: {type: [string, 'null']}
               resume_node: {type: [string, 'null']}
+              checkpoint:
+                oneOf:
+                  - {type: 'null'}
+                  - {$ref: '#/definitions/checkpoint'}
+          runtime_observations: {type: array, items: {$ref: '#/definitions/runtime_observation'}}
+          evidence_manifest:
+            oneOf:
+              - {type: 'null'}
+              - {$ref: '#/definitions/evidence_manifest'}
+          telemetry: {$ref: '#/definitions/telemetry'}
           local: {$ref: '#/definitions/local'}
 
 packet_semantics:
+  schema_versions: contract_version 3의 Task Packet은 schema_version 3이다. 이전 snapshot의 Packet(schema_version 1·2)은 그 snapshot 계약으로만 해석하고 새 field를 요구하지 않는다. project.yaml은 schema_version 1 또는 2를 쓸 수 있으며 layout·health는 2에서 선택한다.
   snapshot: harness_snapshot은 출하 content_id이며 실제 core.yaml은 그 파일 해시와 일치해야 한다. 로컬 설정/지침의 현재 판본과 의미적 호환성도 plan.artifacts에서 식별·대조한다. 설정 변경으로 이전 권한·계획이 자동 유효해지지 않는다.
   incomplete: null과 빈 배열은 준비 상태를 표현한다. 형식 통과가 admit 통과는 아니다. 실제 위임·목적·기준·계획·경계를 채워야 실행할 수 있다.
-  next_action: workflow.node의 단계·guard와 현재 판정에서 다음 허용 행동을 도출한다. 별도 next_action 필드를 중복 관리하지 않는다.
+  next_action:
+    rule: workflow.node의 단계·guard와 현재 판정에서 다음 허용 행동을 도출한다. 별도 next_action 필드를 중복 관리하지 않는다. 같은 snapshot·Packet·Git 상태에서는 어느 runtime이 읽어도 아래 결정적 projection이 같아야 한다.
+    vocabulary: [none, recover, reconcile_checkpoint, complete_admission, plan, request_human_gate, execute, verify, independent_review, accept, deliver, settle_close]
+    order: (1) state CLOSED면 none. (2) recovery.status blocked면 recover. (3) Git 관찰이 recovery.checkpoint와 다르면(checkpoint 밖의 미커밋 변경, checkpoint에 있으나 사라진 변경, base 불일치) reconcile_checkpoint. 이 비교에서 Packet 파일 자신과 layout.delivery_ledger의 변경은 인계 기록 자체이므로 제외한다. checkpoint가 없으면 Packet 파일 밖의 미커밋 변경이 불일치다. (4) 노드별로 admit은 authorization·objective·criteria·scope.write·harness_snapshot 중 빈 값이 있으면 complete_admission, 아니면 plan. plan은 plan.identity나 summary가 없으면 plan, Human Gate가 필요하고 미충족이면 request_human_gate, 아니면 execute. execute는 Gate 미충족이면 request_human_gate, candidate가 없으면 execute, 있으면 verify. verify는 candidate가 없으면 execute, 필수 criteria 중 현재 candidate에 결합된 available·pass 근거가 없는 것이 있거나 현재 candidate에 결합된 available fail·inconclusive 근거가 있거나 verification.verdict가 pass가 아니면 verify, 독립 판단이 필요한데 현재 candidate에 대한 비producer independent_review pass가 없거나 같은 candidate의 rejected 독립 검토가 있으면 independent_review, 아니면 accept. accept는 state가 VERIFIED가 아니면 verify, 현재 candidate에 대한 비producer accepted가 없거나 같은 candidate의 rejected 판정이 있으면 accept, 있으면 close 노드의 판정을 따른다. close는 state가 ACCEPTED가 아니면 accept, delivery.required인데 receipt가 없으면 deliver, 아니면 settle_close. recover 노드는 recover.
+    gate: Human Gate 필요는 scope.risk_tags ∩ (policies.human_gate_tags ∪ project.extra_human_gate_tags)가 비어 있지 않은 것이다. 충족은 인간 actor·role human·verdict approved·subject = 현재 plan.identity인 human_gate decision이 있는 것이다. guards.gate_satisfied와 같이 Gate가 필요 없으면 충족(true)이다. 태그로 표현되지 않은 실제 고영향 판단은 requires_judgment로 남는다.
+    excluded_actors: acceptance에서 제외되는 actor는 candidate가 있으면 candidate.producers의 모든 actor.id다. candidate freeze 전에는 완료 단계가 있는 recovery.checkpoint.actor와 node가 execute인 workflow.actor를 잠정 producer로 제외한다. 이 목록은 최소 집합이며 실제로 candidate를 수정한 actor가 더 있으면 그 actor도 producer다.
+    projection: 결정적 projection은 state·node·graph·role base·effective allow·scope.write·deny·Gate 필요/충족·candidate id·acceptance에서 제외되는 producer actor 목록·미해결 residual·vocabulary 중 하나의 next action·blocked_by·requires_judgment를 포함한다. requires_judgment는 plan 자기검토 품질·applicability 충분성·근거 적용성·관찰 충분성처럼 결정적으로 계산하지 않는 guard 부분이다. projection은 guard 충족 판정이나 권한이 아니다.
   paths: 프로젝트 루트 기준 정확한 파일/디렉터리 상대 경로다. 디렉터리는 그 아래만 포함하고 symlink의 실제 대상도 경계 안이어야 한다. glob·URL·절대/상위 탈출 경로는 허용하지 않는다.
-  manifest: 각 항목의 id는 Packet 안에서 유일하고 실제 프로젝트 자료의 회수 가능한 판본을 식별한다. 프로젝트 자료 경로는 artifact_roots 또는 task_root 안에 둔다. AGENTS.md와 .harness의 계약/설정/배포 식별 파일은 내장 로컬 참조다. 이 경로 분류가 scope.read 밖의 접근을 허가하지는 않는다. 새 출력은 계획의 쓰기 범위로 선언하고 생성 후 manifest에 넣는다.
+  manifest: 각 항목의 id는 Packet 안에서 유일하고 실제 프로젝트 자료의 회수 가능한 판본을 식별한다. 프로젝트 자료 경로는 artifact_roots, task_root 또는 project.yaml layout이 선언한 evidence_root·ledger·registry 경로 안에 둔다. AGENTS.md와 .harness의 계약/설정/배포 식별 파일은 내장 로컬 참조다. 이 경로 분류가 scope.read 밖의 접근을 허가하지는 않는다. 새 출력은 계획의 쓰기 범위로 선언하고 생성 후 manifest에 넣는다.
   references: plan.artifacts·plan.coverage_matrix·candidate.artifacts·evidence.artifact·links.to·children와 Coverage Matrix의 scope artifact·owner_task·to는 manifest ID로 해결한다. subject는 현재 계획/후보 ID 또는 내부에 보존된 이전 식별로 해결한다. 무효·유실 근거는 상태 승격에 사용하지 않는다.
   records: authorization·decision.basis·attempt.receipt·delivery.receipt는 프로젝트 내부 artifact ID 또는 Packet 안의 실제 발언/관찰과 회수 위치 설명이다. 없는 메시지 ID를 만들지 않는다.
   actors: actor.id는 실제 실행/판단 주체의 안정된 식별자다. role/context와 독립적으로 동일성을 유지하며 producer를 누락하거나 이름만 바꿔 인수 제한을 우회하지 않는다. 적격 비producer가 없으면 acceptance를 보류하고 필요한 인수만 요청한다.
@@ -601,6 +875,15 @@ packet_semantics:
   independence: acceptance는 항상 producer와 다른 실제 actor가 맡고 같은 모델 사용은 허용한다. 추가 독립 판단이 필요한 경우에는 bounded context의 실제 분리 근거도 필요하다. 역할 전환·새 ID·새 세션 이름만으로 다른 actor나 분리를 주장하지 않는다. 검토자가 수정하면 producers에 포함하고 다른 적격 actor가 인수한다.
   children: children는 task artifact ID이며 각 하위 인수/후보를 회수한다. 상위 결합 영향과 잔여 의무 대조를 acceptance.basis에 남긴다.
   residual: 잔여 위험은 risk·owner·condition 구조로 기록한다. owner는 후속을 맡는 Task ID·역할·사용자이고 condition은 재개·해소 조건이다. 문자열 잔여 위험은 기록으로 남을 수 있지만 settled의 인계로 인정되지 않는다. 필수 blocker를 단순 위험으로 옮겨 종료하지 않는다.
+  residual_lifecycle:
+    fields: 선택 id는 Packet 안에서 유일하며 다른 Packet이 <task id>#<id>로 가리킨다. owner_kind는 human·task·role·future_task, owner_ref는 기계가 해석할 사용자·Task ID·역할 ID다. owner 문장은 사람용 설명이다. due는 날짜 조건이 있을 때만 쓴다. inherited_from은 이 residual이 이어받은 이전 residual이다.
+    owner: 종료하는 Task 자신을 owner로 두지 않는다. owner_kind task는 존재하는 Task를, future_task는 아직 없는 후속 작업의 이름과 생성 조건을 가리킨다.
+    dispositions: 종료된 Packet의 residual은 고치지 않는다. 후속 Packet이 delivery.residual_dispositions에 resolved(해소 근거)·superseded(대체 residual to)·transferred(새 owner의 residual to)·accepted(인간이 위험을 수용한 decision 근거)를 append하거나 새 residual의 inherited_from으로 이어받는다.
+    liveness: residual 상태는 저장하지 않고 계산한다. 어떤 disposition·inherited_from도 가리키지 않는 residual은 open이다. transferred·superseded 처분과 inherited_from은 존재하는 다른 residual에 결정적으로 연결될 때만 원 residual을 닫으며, 연결이 해결되지 않거나 순환해 위험을 실제로 이어받은 residual이 없으면 원 residual은 open이다. open residual의 owner Task가 CLOSED이거나 없거나, due가 지났거나, owner를 해석할 수 없으면 project health 신호다. 이전 snapshot의 자유문자열 owner는 해석 불가 정보로만 보고하고 소급 강제하지 않는다.
+  evidence_manifest: 선택 evidence_manifest는 이 Task의 evidence namespace root와 tier를 선언한다. authoritative·supporting은 artifacts manifest ID이고 raw는 root 안의 경로다. 같은 항목을 두 tier에 두지 않는다. 기본 retrieval과 봉인은 artifact_lifecycle을 따른다. Task가 CLOSED가 되면 manifest도 함께 봉인되며 당시 manifest를 바꾸지 않는다.
+  checkpoint: recovery.checkpoint는 중단·인계 지점의 최소 재개 상태다. actor, base(Git commit), uncommitted(그 시점 의도된 미커밋 변경 경로), completed·remaining 단계를 적는다. 재개 actor는 base·uncommitted를 실제 Git 상태와 대조하고 결과를 기록한 뒤 checkpoint를 갱신한다. 완료 단계를 다시 실행하지 않는다.
+  runtime_observations: append-only 기록이다. 각 항목은 관찰한 actor·runtime family·필요 capability 상태와 관찰 근거다. family가 바뀐 연속 항목 수가 runtime 인계 횟수다.
+  telemetry: Packet telemetry는 상위 telemetry 절의 고정 key만 쓴다. 관찰하지 못한 값은 null이다.
   local: top-level과 plan의 local은 프로젝트 확장 기록이다. guard가 읽지 않으며 core field를 대신하지 않는다.
   coverage:
     applies: scope.children이 비어 있지 않은 분해 Packet은 plan.coverage_matrix로 project-local Coverage Matrix sidecar 하나를 가리킨다. matrix는 그 parent가 소유하며 중앙 registry가 아니다. 해당 manifest 항목은 kind plan과 정확한 path·revision(current 금지)을 가지며 matrix의 task는 parent id와 같다. routine 단일 Task에는 필요 없다.
@@ -617,6 +900,7 @@ packet_semantics:
     drift: 상태는 저장하지 않고 현재 source로 계산한다. excerpt가 scope 안 한 단위의 앞부분과 일치하고 fingerprint가 같으면 ok, 위치는 찾았지만 fingerprint가 다르면 suspect, 둘 이상과 일치하고 hint로도 풀리지 않으면 ambiguous, 일치가 없으면 missing이다. 어느 행도 찾지 않는 새 단위는 미처분이다. suspect는 실패 판정이 아니라 재확인 신호이며 재확인 전에는 현재 근거로 쓰지 않는다. 재확인은 처분을 검토한 뒤 excerpt·fingerprint·scope revision을 갱신하는 기록이다.
     separation: Coverage Matrix는 선언 scope 안의 closed-world 기록이며 Artifact Graph가 아니다. matrix는 권한을 주지 않고 guard가 그 검사 evidence를 소비한다.
     reviewer: 독립 reviewer는 coverage oracle이 아니다. orphan·포인터·drift는 matrix 검사가 맡고 owned 행의 실제 충족은 reviewer가 원문·criterion·후보·근거로 판단한다. 필수 reviewer 수는 늘지 않는다.
+  delivery_ledger: layout.delivery_ledger는 JSON Lines append-only 기록이다. 각 줄은 task·commit·push 결과·local/remote identity·clean 관찰·기록 actor를 가진다. 기존 줄을 고치지 않는다.
   delivery: target은 동일하면 candidate.id, 다르면 실제 전달 판본/구성 목록을 식별하는 manifest ID다. receipt와 applicability로 인수 대상과 관계를 설명한다. 전달 불필요면 required=false의 이유를 적는다. 영향 변경이면 OPEN으로 돌아가 재검증/필요 재인수한다.
-  attempts: max_attempts는 시도 총수의 작업별 유한 상한이다. 계획에서 실행·검증/재작업 단위에 맞춰 정하며 기존 소비를 지우거나 자동 증액하지 않는다. 한 attempt는 계획에서 정한 의미 있는 실행/재작업 단위이며 모든 읽기 명령을 별도 세지 않는다. 시작 전에 기록하고 불명확한 소비도 한도에 포함한다. 불확실한 비멱등 효과를 다시 실행하지 않는다.
+  attempts: max_attempts는 시도 총수의 작업별 유한 상한이다. 계획에서 실행·검증/재작업 단위에 맞춰 정하며 기존 소비를 지우거나 자동 증액하지 않는다. 한 attempt는 계획에서 정한 의미 있는 실행/재작업 단위이며 모든 읽기 명령을 별도 세지 않는다. 시작 전에 기록하고 불명확한 소비도 한도에 포함한다. 불확실한 비멱등 효과를 다시 실행하지 않는다. 효과 없는 상태 확인(Packet·Git 읽기, next-action 파악, 결정적 계약 검사, capability 확인, 그 밖의 읽기 전용 확인)은 attempt가 아니며 기록 전에 할 수 있다. 파일 쓰기, test·검증 실행, 외부 효과 명령, 그 밖에 저장소·환경에 실질 효과를 주는 실행은 시작 전에 attempt를 기록한다. Task Packet에 기록을 쓰는 것 자체는 효과가 아니다. 기록 전에 실행한 효과를 나중에 발견하면 지우지 않고 늦은 기록임을 receipt에 밝히며 순서 위반은 그대로 남는다. 효과 없음이 분명하지 않은 실행(inline 코드·script·변환 명령 등)은 효과로 보고 attempt 뒤에 한다.
   preservation: 이전 후보·근거·판정은 배열 또는 프로젝트 내부의 회수 가능한 불변 판본으로 보존한다. 현재 Packet의 요약만으로 유실 근거를 대체하지 않는다.

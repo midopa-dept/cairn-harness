@@ -82,10 +82,11 @@ class GitSource(Source):
 
     def list(self, root: str) -> list[str]:
         result = subprocess.run(
-            ["git", "-C", str(self.repo), "ls-tree", "-r", "--name-only", self.rev, root],
-            capture_output=True, text=True,
+            ["git", "-C", str(self.repo), "ls-tree", "-r", "-z", "--name-only", self.rev, root],
+            capture_output=True,
         )
-        return sorted(result.stdout.split()) if result.returncode == 0 else []
+        # -z: 비ASCII·공백 경로를 quoting 없이 그대로 받는다
+        return sorted(p.decode() for p in result.stdout.split(b"\0") if p) if result.returncode == 0 else []
 
 
 @dataclass

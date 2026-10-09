@@ -73,7 +73,10 @@ class Validator:
                 return []
             if len(passed) > 1:
                 return [SchemaError(path, "oneOf_multiple", "oneOf 둘 이상과 일치")]
-            best = min(branches, key=len)
+            # 진단: 값의 type과 맞는 분기(최상위 type 오류가 없는 분기)의 내부 오류를 우선 보고한다.
+            # 오류 수가 같다고 첫 분기(예: null)를 보고하면 "null만 허용"처럼 읽혀 원인을 숨긴다.
+            typed = [b for b in branches if not any(e.path == path and e.code == "type" for e in b)]
+            best = min(typed or branches, key=len)
             return best if best else [SchemaError(path, "oneOf_none", "oneOf 어느 것과도 불일치")]
         if "type" in schema:
             names = schema["type"] if isinstance(schema["type"], list) else [schema["type"]]

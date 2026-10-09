@@ -1,5 +1,5 @@
 kind: project
-schema_version: 1
+schema_version: 2
 # 필수 초기 설정. 이름과 자료 루트는 이 프로젝트 안의 값으로 채운다.
 project_id: null
 artifact_roots: []
@@ -8,8 +8,22 @@ task_root: .harness/tasks
 extra_human_gate_tags: []
 # 예: 역할 ID 아래 base/allow/deny. allow는 base의 부분집합, deny는 누적된다.
 role_specializations: {}
-# 설정은 기능의 보증이 아니다. 실행 전 실제 관찰과 부족한 경계를 대조한다.
+# 설정은 기능의 보증이 아니다. 지속 경계만 적고 Task별 위임은 Packet scope.authorization에 둔다.
 runtime:
   name: null
   access_boundary: null
   judgment_boundary: null
+# 경로 → artifact class 선언. 권장 구조: docs = current documentation, .harness = Task·evidence·provenance.
+layout:
+  canonical: []
+  operational: []
+  decision: []
+  historical: []
+  sealed: []
+  evidence_root: .harness/evidence
+  raw_patterns: ['.log', '.png', '.jpg', '.jpeg', '.webm', '.mp4', '.trace', '.har', '.zip']
+  relocation_ledger: .harness/relocations.yaml
+  delivery_ledger: .harness/deliveries.jsonl
+# project health 선택 설정. indexes의 current_sections가 가리키는 Task가 CLOSED면 경고한다.
+health:
+  indexes: []
