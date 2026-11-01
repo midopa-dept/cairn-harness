@@ -6,12 +6,13 @@
 - 계약(배포 파일)의 판본과 companion validator `cairn_check`의 판본은 별개입니다. validator 판본은 계약 `content_id`의 일부가 아닙니다.
 - 기존 Task Packet은 각자 `harness_snapshot`의 계약으로 해석합니다. 새 판본의 규칙은 이전 Packet에 소급하지 않습니다.
 - 모든 판본은 release candidate이며 최종 `1.0.0`은 아직 없습니다. Git tag와 GitHub Release는 만들지 않았습니다.
+- 2026-11-02에 commit 작성자를 GitHub noreply 주소로 바꾸려고 이 저장소의 이력을 한 번 다시 썼습니다. 각 commit의 tree·메시지·날짜는 그대로이고 commit hash만 바뀌었습니다. 이 문서의 hash는 새 이력 기준입니다. 이전 clone은 `git fetch` 뒤 새 `main`으로 맞춰야 합니다.
 
 ## 1.0.0-candidate.5 — 2026-10-10
 
 | 항목 | 값 |
 |---|---|
-| 공개 commit | `6627736` |
+| 공개 commit | `1e88d51` |
 | 계약 | `1.0.0-candidate.5`, `contract_version` 3, Task `schema_version` 3 |
 | content_id | `sha256:7a3d4d4f69a346ef9fa4c44973276a7625e52b94e9e56dde742dba5e4b5e00ca` |
 | validator | `cairn_check` 0.3.0 |
@@ -72,14 +73,14 @@
 
 ### 같은 판본 기간의 저장소 변경(계약 파일 불변)
 
-- README 재구성과 이 CHANGELOG 추가(`3aa0f26`, 2026-10-10)
+- README 재구성과 이 CHANGELOG 추가(`317ce12`, 2026-10-10)
 - 영문 README(`README.en.md`)와 설계 노트(`docs/design-notes/`) 추가(2026-11-02)
 
 ## 1.0.0-candidate.4 — 2026-09-29
 
 | 항목 | 값 |
 |---|---|
-| 공개 commit | `e2e2289` |
+| 공개 commit | `c62c7f3` |
 | 계약 | `1.0.0-candidate.4`, `contract_version` 2, Task `schema_version` 2 |
 | content_id | `sha256:6646a69ec53adf08f92fffc7e7a95c8567065b17b5ebf47187724b67e8fd5414` |
 | validator | `cairn_check` 0.2.1(이 저장소에 처음 공개) |
@@ -103,12 +104,12 @@
 
 | 항목 | 값 |
 |---|---|
-| 공개 commit | `ab087b0`(첫 공개) |
+| 공개 commit | `8628b53`(첫 공개) |
 | 계약 | `1.0.0-candidate.3` |
 | content_id | `sha256:9c78d2433c5ae5e927e83e5df68f5357083584763d97a33184a429aeafe356f2` |
 | validator | 없음 |
 | 배포 파일 | 5개: `AGENTS.md`, `.harness/core.yaml`, `.harness/project.yaml`, `.harness/task.example.yaml`, `.harness/distribution.yaml` |
 
 - 이 저장소의 첫 공개 판본입니다. 역할·노드·범위 교집합 권한, 고영향 변경의 Human Gate, 검증·인수·종료의 구분, producer 자기 인수 금지, progressive retrieval, 후보·범위에 결합된 evidence, 조건부 Git closeout을 포함합니다.
-- 같은 판본 기간에 계약 파일을 바꾸지 않은 저장소 변경: MIT License 추가(`0f279f9`, 2026-09-21), README 한국어 번역(`b7fd5c2`, 2026-09-21), README 설계 배경·참고자료 확장(`98d2bf7`, 2026-09-22)
+- 같은 판본 기간에 계약 파일을 바꾸지 않은 저장소 변경: MIT License 추가(`840e187`, 2026-09-21), README 한국어 번역(`bf9f9af`, 2026-09-21), README 설계 배경·참고자료 확장(`d618abf`, 2026-09-22)
 - candidate.3 이전 판본은 이 저장소에 공개되지 않았습니다.
