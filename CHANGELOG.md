@@ -70,6 +70,11 @@
 - 기존 `CLAUDE.md`가 있으면 덮어쓰지 말고 병합합니다.
 - candidate.4 Packet은 candidate.4 `core.yaml`을 `--contract <content_id>=<path>`로 주면 그 계약으로 검사합니다.
 
+### 같은 판본 기간의 저장소 변경(계약 파일 불변)
+
+- README 재구성과 이 CHANGELOG 추가(`3aa0f26`, 2026-10-10)
+- 영문 README(`README.en.md`)와 설계 노트(`docs/design-notes/`) 추가(2026-11-02)
+
 ## 1.0.0-candidate.4 — 2026-09-29
 
 | 항목 | 값 |

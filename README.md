@@ -1,11 +1,14 @@
 # Cairn Harness
 
+한국어 · [English](README.en.md)
+
 Cairn은 LLM agent가 장기간 코드를 바꾸는 소프트웨어 프로젝트를 위한 **소형 선언형 Harness**입니다. 프로젝트 안에 두는 8개 파일이 권한·작업 상태·검증과 인수·증거·중단 후 복구·종료 절차를 계약으로 정합니다. Claude Code와 Codex 같은 기존 agent runtime이 이 계약을 읽고 따릅니다.
 
 > **현재 공개 판본:** `1.0.0-candidate.5`(`contract_version` 3, Task `schema_version` 3) + companion validator `cairn_check` 0.3.0
 > 최종 `1.0.0`이 아닌 release candidate입니다. 실제 프로젝트 적용을 이어가며 검증하는 단계입니다.
 > 이 판본은 attempt 사전 기록 순서를 자동으로 검증하거나 강제하지 않습니다([현재 한계](#8-현재-한계)).
 > 판본별 변경 내역은 [CHANGELOG](CHANGELOG.md)에 있습니다.
+> 이 판본이 나오기까지의 검토·결정 이력은 [설계 노트](docs/design-notes/README.md)에 있습니다.
 
 ## 목차
 
@@ -390,6 +393,7 @@ Git 프로젝트에서 위임이나 정책이 commit/push를 허용하고, 정�
 | [`.harness/task.example.yaml`](.harness/task.example.yaml) | Task Packet 템플릿과 field 설명 |
 | [`tools/README.md`](tools/README.md) | `cairn_check` 명령·종료 코드·알려진 한계·판본 |
 | [CHANGELOG](CHANGELOG.md) | 공개 판본별 변경 내역 |
+| [설계 노트](docs/design-notes/README.md) | 회고에서 메커니즘을 뽑은 과정, 판본별 검토·결정 이력(16차 독립 검토 REJECT와 release-scope 분리 포함) |
 
 ### 7.2 판본과 배포본 식별
 
